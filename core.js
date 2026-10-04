@@ -26,6 +26,43 @@ export function planningPeriodRange(kind, index) {
   planningPeriod(kind, index, 2000);
   return (kind === 'half' ? ['январь — июнь', 'июль — декабрь'] : ['январь — март', 'апрель — июнь', 'июль — сентябрь', 'октябрь — декабрь'])[index - 1];
 }
+export function calendarPeriod(kind, start, end = '') {
+  if (kind === 'month') {
+    if (!/^\d{4}-\d{2}$/.test(start) || !validDate(start + '-01')) throw new Error('Выберите месяц и год.');
+    const next = new Date(start + '-01T12:00:00'); next.setMonth(next.getMonth() + 1);
+    return { kind, start: start + '-01', end: shiftDate(dateKey(next), -1), period: `Месяц ${start}` };
+  }
+  if (!validDate(start)) throw new Error('Укажите дату начала.');
+  if (kind === 'week') {
+    start = shiftDate(start, -((new Date(start + 'T12:00:00').getDay() + 6) % 7));
+    end = shiftDate(start, 6);
+  } else if (kind !== 'range' || !validDate(end) || end < start) throw new Error('Дата окончания должна быть не раньше начала.');
+  return { kind, start, end, period: `${kind === 'week' ? 'Неделя ' : ''}${start} — ${end}` };
+}
+export function parseCalendarPeriod(value) {
+  if (typeof value !== 'string') return null;
+  try {
+    const month = value.match(/^Месяц (\d{4}-\d{2})$/);
+    if (month) return calendarPeriod('month', month[1]);
+    const range = value.match(/^(Неделя )?(\d{4}-\d{2}-\d{2}) — (\d{4}-\d{2}-\d{2})$/);
+    if (range) {
+      const result = calendarPeriod(range[1] ? 'week' : 'range', range[2], range[3]);
+      return result.start === range[2] && result.end === range[3] ? result : null;
+    }
+  } catch { return null; }
+  return null;
+}
+export function calendarPeriodLabel(value) {
+  const period = parseCalendarPeriod(value);
+  if (!period) return value;
+  const format = key => new Date(key + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  if (period.kind === 'month') return new Date(period.start + 'T12:00:00').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+  return `${period.kind === 'week' ? 'Неделя: ' : ''}${format(period.start)} — ${format(period.end)}`;
+}
+export function periodOverlaps(value, start, end) {
+  const period = parseCalendarPeriod(value);
+  return !!period && period.start <= end && period.end >= start;
+}
 export function validateState(input) {
   if (!input || input.version !== 1) throw new Error('Это не резервная копия Опоры поддерживаемой версии.');
   const result = emptyState();

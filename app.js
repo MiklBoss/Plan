@@ -1,4 +1,4 @@
-import { emptyState, dateKey, shiftDate, validDate, validateState, mergeStates, active, encodeState, decodeState, LEVELS, planningPeriod, parsePlanningPeriod, planningPeriodRange } from './core.js';
+import { emptyState, dateKey, shiftDate, validDate, validateState, mergeStates, active, encodeState, decodeState, LEVELS, planningPeriod, parsePlanningPeriod, planningPeriodRange, calendarPeriod, parseCalendarPeriod, calendarPeriodLabel, periodOverlaps } from './core.js';
 
 const KEY = 'opora.data.v1', CONFIG = 'opora.github.v1', TIMER = 'opora.timer.v1';
 const app = document.querySelector('#app'), dialog = document.querySelector('#dialog');
@@ -33,6 +33,7 @@ let config = {};
 try { config = JSON.parse(localStorage.getItem(CONFIG) || '{}'); } catch { /* Keep planner usable. */ }
 let page = 'day', planLevel = 'month', selectedDate = dateKey(), ideaFilter = 'inbox', focusMode = false, syncing = false, lastStamp = 0, dialogReturnFocus;
 const periodView = { kind: 'quarter', year: new Date().getFullYear(), half: Math.floor(new Date().getMonth() / 6) + 1, quarter: Math.floor(new Date().getMonth() / 3) + 1 };
+const planView = { month: dateKey().slice(0, 7), week: dateKey(), scope: 'period' };
 let timer = { remaining: 25 * 60, end: null, sessions: 0 };
 try { timer = { ...timer, ...JSON.parse(sessionStorage.getItem(TIMER) || '{}') }; } catch { /* Reset invalid timer. */ }
 if (!Number.isFinite(timer.remaining) || timer.remaining < 0 || (timer.end !== null && !Number.isFinite(timer.end))) timer = { remaining: 1500, end: null, sessions: 0 };
@@ -107,7 +108,7 @@ function renderDay() {
     <section class="task-section"><div class="section-heading"><h2>${icon('flame')} Горячие задачи <span class="number-badge">${hot.length}</span></h2><span class="section-caption">До 3 главных — уже достаточно</span></div>${hot.length ? `<div class="task-list hot-list">${hot.map(taskRow).join('')}</div>` : '<div class="empty-inline">Выберите задачи, которые требуют внимания сегодня.</div>'}</section>
     <section class="task-section"><div class="section-heading"><h2>Остальные задачи <span class="number-badge">${ordinary.length}</span></h2>${button('new-task', 'Добавить', 'plus', 'text-button')}</div>${ordinary.length ? `<div class="task-list">${ordinary.map(taskRow).join('')}</div>` : '<div class="empty-inline">Здесь может быть пусто. Оставьте место для жизни.</div>'}<form id="quick-task" class="quick-add">${icon('plus')}<input name="title" maxlength="500" placeholder="Небольшой следующий шаг…" aria-label="Новая задача" required autocomplete="off"><button type="submit" class="quick-submit" aria-label="Добавить задачу">${icon('arrow')}</button></form></section>
     ${done.length ? `<details class="completed-section"><summary>${icon('check')} Завершено сегодня <span>${done.length}</span></summary><div class="task-list">${done.map(taskRow).join('')}</div></details>` : ''}
-    ${overduePanel()}
+    ${overduePanel()}${datedPlansPanel()}
     <section class="review-card"><div class="section-heading"><h2>${icon('moon')} Закрыть день</h2><span class="section-caption">Без оценок. С заботой о себе.</span></div><label for="day-review">Что получилось? Что хочется взять в завтра?</label><textarea id="day-review" rows="2" maxlength="5000" placeholder="Даже маленький шаг — это движение вперёд.">${esc(record.review)}</textarea></section>
     </div><aside class="day-aside"><section class="card progress-card"><div class="section-heading"><h3>Ритм дня</h3>${icon('spark')}</div><div class="progress-ring" style="--progress:${tasks.length ? completed / tasks.length * 100 : 0}%"><div><strong>${completed}<span> / ${tasks.length}</span></strong><small>задач завершено</small></div></div><p>${completed && completed === tasks.length ? 'Важное сделано. Можно выдохнуть.' : 'Каждый маленький шаг считается.'}</p></section>
     ${timerCard()}
@@ -132,6 +133,16 @@ function renderFocus() {
   app.innerHTML = `<main class="focus-screen"><div class="focus-screen-top"><span class="brand mini-brand">опора.</span>${button('exit-focus', 'Вернуться к плану', 'close', 'btn btn-light')}</div><div class="focus-screen-content"><div class="eyebrow">СЕЙЧАС ЕСТЬ ТОЛЬКО ЭТОТ ШАГ</div><h1>${esc(day().focus || 'Выберите одно дело и побудьте с ним.')}</h1><p class="muted">${dateLabel(selectedDate)} · остальное может подождать</p>${timerCard()}${tasks.length ? `<div class="focus-tasks">${tasks.map(taskRow).join('')}</div>` : ''}${button('capture', 'Записать отвлекающую мысль', 'plus', 'text-button')}<span class="escape-hint">Esc — вернуться к плану</span></div></main>`;
   updateTimer();
 }
+function datedPlansPanel() {
+  const records = visible('goals').filter(g => periodOverlaps(g.period, selectedDate, selectedDate));
+  if (!records.length) return '';
+  return `<details class="dated-plans"><summary>${icon('day')} Планы на этот день <span>${records.length}</span></summary>${records.map(g => `<button class="linked-goal" data-action="goal-details" data-id="${g.id}"><span>${esc(g.title)}<small>${esc(calendarPeriodLabel(g.period))}</small></span>${icon('arrow')}</button>`).join('')}</details>`;
+}
+function selectedPlanPeriod(level = planLevel) { return calendarPeriod(level, planView[level]); }
+function calendarSelector() {
+  const p = selectedPlanPeriod();
+  return `<section class="period-selector" aria-label="Выбор месяца или недели"><div class="period-toolbar"><div class="tabs">${[['period', 'Выбранный период'], ['unassigned', 'Без точных дат']].map(([scope, label]) => button('plan-scope', label, '', `tab ${planView.scope === scope ? 'active' : ''}`, `data-scope="${scope}" aria-pressed="${planView.scope === scope}"`)).join('')}</div></div>${planView.scope === 'period' ? `<div class="calendar-navigation">${button('plan-previous', 'Назад', 'back', 'btn btn-light')}<label class="field">${planLevel === 'month' ? 'Месяц и год' : 'Любой день нужной недели'}<input id="plan-date" type="${planLevel === 'month' ? 'month' : 'date'}" value="${planView[planLevel]}" required></label>${button('plan-next', 'Вперёд', 'chevron', 'btn btn-light')}</div><p class="period-current">${icon('day')} ${esc(calendarPeriodLabel(p.period))}</p><p class="period-form-preview">Показаны планы с датами, которые пересекаются с этим периодом.</p>` : '<p class="period-current">Планы с прежним текстом периода сохранены здесь. В редактировании можно выбрать точные даты.</p>'}</section>`;
+}
 function periodSelector(records) {
   const unassigned = records.filter(g => !parsePlanningPeriod(g.period));
   const tabs = [['half', 'Полугодие'], ['quarter', 'Квартал']];
@@ -146,17 +157,17 @@ function renderGoals(level) {
   const records = level === 'quarter' ? allRecords.filter(g => {
     const p = parsePlanningPeriod(g.period);
     return periodView.kind === 'unassigned' ? !p : p?.kind === periodView.kind && p.index === periodView[periodView.kind] && p.year === periodView.year;
-  }) : allRecords;
+  }) : ['month', 'week'].includes(level) ? (planView.scope === 'unassigned' ? allRecords.filter(g => !parseCalendarPeriod(g.period)) : visible('goals').filter(g => ['month', 'week', 'project'].includes(g.level) && periodOverlaps(g.period, selectedPlanPeriod(level).start, selectedPlanPeriod(level).end))) : allRecords;
   const intros = { strategy: ['Куда я хочу прийти', 'Задайте направление на 1–10 лет. Здесь не нужен подробный список дел.'], quarter: ['От направления к результату', 'Выберите несколько результатов на полугодие или квартал.'], month: ['Большое становится ближе', 'План на месяц и неделю — мост между целями и сегодняшним шагом.'], week: ['Следующая понятная неделя', 'Выберите посильные шаги. Оставьте место для непредвиденного.'], project: ['Замыслы в движении', 'Объединяйте задачи в проекты и связывайте их с вашими целями.'] };
   return `<section class="page-heading"><div><div class="eyebrow">${captions[level].toUpperCase()}</div><h1>${intros[level][0]}<span class="heading-dot">.</span></h1><p>${intros[level][1]}</p></div>${button('new-goal', level === 'project' ? 'Новый проект' : 'Добавить цель', 'plus', 'btn btn-primary', `data-level="${level}"`)}</section>
-    ${level === 'quarter' ? periodSelector(allRecords) : ''}${page === 'plans' ? `<div class="tabs">${['month', 'week'].map(l => button('plan-level', labels[l], '', `tab ${level === l ? 'active' : ''}`, `data-level="${l}"`)).join('')}</div>` : ''}
+    ${level === 'quarter' ? periodSelector(allRecords) : ''}${page === 'plans' ? `<div class="tabs">${['month', 'week'].map(l => button('plan-level', labels[l], '', `tab ${level === l ? 'active' : ''}`, `data-level="${l}"`)).join('')}</div>${calendarSelector()}` : ''}
     <div class="horizon-path"><span>${icon('strategy')} Направление</span>${icon('chevron')}<span>Результат</span>${icon('chevron')}<span>План</span>${icon('chevron')}<span>${icon('project')} Проект</span>${icon('chevron')}<span>Шаг сегодня</span></div>
     ${records.length ? `<div class="goals-grid">${records.map(goalCard).join('')}</div>` : `<section class="large-empty">${icon(level === 'week' ? 'month' : level)}<h2>${level === 'project' ? 'Дайте замыслу своё место' : level === 'quarter' ? 'В этом периоде пока нет целей' : 'Начните с одной цели'}</h2><p>Что вы хотите изменить? Как поймёте, что получилось?<br>Свяжите этот результат с более широким направлением.</p>${button('new-goal', level === 'project' ? 'Создать проект' : 'Записать цель', 'plus', 'btn btn-primary', `data-level="${level}"`)}</section>`}
     <div class="soft-note">${icon('leaf')} План — это опора, а не обещание успеть всё. Его можно менять.</div>`;
 }
 function goalCard(g) {
   const linkedTasks = visible('tasks').filter(t => t.goalId === g.id), children = visible('goals').filter(c => c.parentId === g.id), parent = goal(g.parentId);
-  return `<article class="goal-card"><div class="goal-card-top"><span class="period-tag">${esc(g.period || captions[g.level])}</span>${button('edit-goal', '', 'edit', 'icon-button', `data-id="${g.id}" aria-label="Редактировать: ${esc(g.title)}"`)}</div><h2>${esc(g.title)}</h2>${g.notes ? `<p class="goal-notes">${esc(g.notes)}</p>` : '<p class="goal-notes muted">Добавьте критерий результата и следующий шаг.</p>'}${parent ? `<button class="parent-link" data-action="open-goal" data-id="${parent.id}">${icon('strategy')} ${esc(parent.title)} ${icon('arrow')}</button>` : ''}<div class="goal-progress-label"><span>Продвижение</span><b>${g.progress}%</b></div><label class="sr-only" for="progress-${g.id}">Продвижение: ${esc(g.title)}</label><input id="progress-${g.id}" class="goal-progress" type="range" min="0" max="100" step="5" value="${g.progress}" data-goal="${g.id}" style="--progress:${g.progress}%"><div class="goal-card-footer"><span>${children.length} связанных целей · ${linkedTasks.filter(t => t.done).length}/${linkedTasks.length} задач</span>${button('goal-details', 'Открыть', 'arrow', 'text-button', `data-id="${g.id}"`)}</div></article>`;
+  return `<article class="goal-card"><div class="goal-card-top"><span class="period-tag">${esc(calendarPeriodLabel(g.period) || captions[g.level])}</span>${button('edit-goal', '', 'edit', 'icon-button', `data-id="${g.id}" aria-label="Редактировать: ${esc(g.title)}"`)}</div><h2>${esc(g.title)}</h2>${g.notes ? `<p class="goal-notes">${esc(g.notes)}</p>` : '<p class="goal-notes muted">Добавьте критерий результата и следующий шаг.</p>'}${parent ? `<button class="parent-link" data-action="open-goal" data-id="${parent.id}">${icon('strategy')} ${esc(parent.title)} ${icon('arrow')}</button>` : ''}<div class="goal-progress-label"><span>Продвижение</span><b>${g.progress}%</b></div><label class="sr-only" for="progress-${g.id}">Продвижение: ${esc(g.title)}</label><input id="progress-${g.id}" class="goal-progress" type="range" min="0" max="100" step="5" value="${g.progress}" data-goal="${g.id}" style="--progress:${g.progress}%"><div class="goal-card-footer"><span>${children.length} связанных целей · ${linkedTasks.filter(t => t.done).length}/${linkedTasks.length} задач</span>${button('goal-details', 'Открыть', 'arrow', 'text-button', `data-id="${g.id}"`)}</div></article>`;
 }
 function renderIdeas() {
   const records = visible('ideas').filter(i => i.status === ideaFilter).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -180,10 +191,32 @@ function taskDialog(record = {}, fromIdea = '', parent = '') {
   openDialog(parentTask ? 'Подзадача' : defaults.id ? 'Редактировать задачу' : 'Новый шаг', `${parentTask ? `<p class="dialog-intro">Часть задачи: ${esc(parentTask.title)}</p>` : ''}<input type="hidden" name="id" value="${defaults.id}"><input type="hidden" name="ideaId" value="${fromIdea}"><input type="hidden" name="parentTaskId" value="${parentTask?.id || ''}">${textField('title', 'Что нужно сделать?', defaults.title, 'Сформулируйте понятное действие')}<div class="form-columns"><label class="field">Дата<input type="date" name="date" value="${parentTask?.date || defaults.date}" required ${parentTask ? 'readonly' : ''}></label><label class="field">Цель или проект<select name="goalId"><option value="">Без привязки</option>${visible('goals').map(g => `<option value="${g.id}" ${(parentTask?.goalId || defaults.goalId) === g.id ? 'selected' : ''}>${esc(g.title)} · ${labels[g.level]}</option>`).join('')}</select></label></div>${notesField(defaults.notes)}<label class="checkbox-label"><input type="checkbox" name="hot" ${defaults.hot ? 'checked' : ''}>${icon('flame')} Горячая задача — важна сегодня</label>`, 'task-form', 'Сохранить', defaults.id ? button('delete', 'Удалить', 'trash', 'text-button danger', `data-id="${defaults.id}" data-collection="tasks"`) : '');
 }
 function goalPeriodFields(record) {
+  if (['month', 'week', 'project'].includes(record.level)) return calendarGoalFields(record);
   if (record.level !== 'quarter') return textField('period', 'Горизонт или период', record.period, ({ strategy: 'Например: 2027–2031 · 5 лет', month: 'Например: октябрь 2026', week: 'Например: 5–11 октября 2026', project: 'Например: до декабря 2026' })[record.level]);
   const parsed = parsePlanningPeriod(record.period), kind = parsed?.kind || (record.id ? 'legacy' : periodView.kind === 'half' ? 'half' : 'quarter');
   const selectedKind = kind === 'legacy' ? 'quarter' : kind, year = parsed?.year || periodView.year, index = parsed?.index || periodView[selectedKind];
   return `<fieldset class="goal-calendar"><legend>Точный период</legend><input type="hidden" name="period" value="${esc(record.period)}"><label class="field">Горизонт<select name="periodKind"><option value="half" ${kind === 'half' ? 'selected' : ''}>Полугодие</option><option value="quarter" ${kind === 'quarter' ? 'selected' : ''}>Квартал</option>${kind === 'legacy' ? '<option value="legacy" selected>Сохранить прежний текст периода</option>' : ''}</select></label><div class="form-columns"><label class="field">Год<input type="number" name="periodYear" min="1900" max="2200" step="1" value="${year}" required ${kind === 'legacy' ? 'disabled' : ''}></label><label class="field">Номер периода<select name="periodIndex" ${kind === 'legacy' ? 'disabled' : ''}>${Array.from({ length: selectedKind === 'half' ? 2 : 4 }, (_, i) => `<option value="${i + 1}" ${i + 1 === index ? 'selected' : ''}>${['I', 'II', 'III', 'IV'][i]} · ${planningPeriodRange(selectedKind, i + 1)}</option>`).join('')}</select></label></div><p id="goal-period-preview" class="period-form-preview">${esc(kind === 'legacy' ? record.period || 'Период ещё не указан' : planningPeriod(kind, index, year))}</p></fieldset>`;
+}
+function calendarGoalFields(record) {
+  const parsed = parseCalendarPeriod(record.period), kind = parsed?.kind || (record.id || record.level === 'project' ? 'text' : record.level);
+  const start = parsed?.start || (record.level === 'week' ? selectedPlanPeriod('week').start : dateKey()), end = parsed?.end || start;
+  return `<fieldset class="goal-calendar"><legend>Период плана</legend><input type="hidden" name="period" value="${esc(record.period)}"><label class="field">Как задать период<select name="calendarKind"><option value="month" ${kind === 'month' ? 'selected' : ''}>Конкретный месяц</option><option value="week" ${kind === 'week' ? 'selected' : ''}>Конкретная неделя · пн–вс</option><option value="range" ${kind === 'range' ? 'selected' : ''}>Даты с — по · отпуск, каникулы</option><option value="text" ${kind === 'text' ? 'selected' : ''}>Без точных дат / прежний текст</option></select></label><label class="field" data-calendar-field="month" ${kind !== 'month' ? 'hidden' : ''}>Месяц и год<input type="month" name="calendarMonth" value="${parsed?.start.slice(0, 7) || planView.month}" required ${kind !== 'month' ? 'disabled' : ''}></label><label class="field" data-calendar-field="week" ${kind !== 'week' ? 'hidden' : ''}>Любой день нужной недели<input type="date" name="calendarWeek" value="${start}" required ${kind !== 'week' ? 'disabled' : ''}></label><div class="form-columns" data-calendar-field="range" ${kind !== 'range' ? 'hidden' : ''}><label class="field">Дата начала<input type="date" name="calendarStart" value="${start}" required ${kind !== 'range' ? 'disabled' : ''}></label><label class="field">Дата окончания<input type="date" name="calendarEnd" value="${end}" min="${start}" required ${kind !== 'range' ? 'disabled' : ''}></label></div><label class="field" data-calendar-field="text" ${kind !== 'text' ? 'hidden' : ''}>Текст периода <span class="optional">необязательно</span><input name="periodText" maxlength="100" value="${esc(record.period)}" placeholder="Например: когда появится время" ${kind !== 'text' ? 'disabled' : ''}></label><p id="calendar-period-preview" class="period-form-preview">${esc(parsed ? calendarPeriodLabel(parsed.period) : kind === 'text' ? record.period || 'План без точных дат' : calendarPeriodLabel(selectedPlanPeriod(record.level).period))}</p></fieldset>`;
+}
+function calendarPeriodFromForm(form) {
+  const value = name => form.querySelector(`[name="${name}"]`).value;
+  const kind = value('calendarKind');
+  if (kind === 'text') return value('periodText').trim();
+  return calendarPeriod(kind, value(kind === 'month' ? 'calendarMonth' : kind === 'week' ? 'calendarWeek' : 'calendarStart'), kind === 'range' ? value('calendarEnd') : '').period;
+}
+function updateCalendarFields(form) {
+  const kind = form.querySelector('[name="calendarKind"]').value;
+  form.querySelectorAll('[data-calendar-field]').forEach(group => {
+    group.hidden = group.dataset.calendarField !== kind;
+    group.querySelectorAll('input').forEach(input => { input.disabled = group.hidden; });
+  });
+  form.querySelector('[name="calendarEnd"]').min = form.querySelector('[name="calendarStart"]').value;
+  try { form.querySelector('#calendar-period-preview').textContent = calendarPeriodLabel(calendarPeriodFromForm(form)) || 'План без точных дат'; }
+  catch (error) { form.querySelector('#calendar-period-preview').textContent = error.message; }
 }
 function updateGoalPeriodFields(form) {
   const kind = form.querySelector('[name="periodKind"]')?.value;
@@ -207,7 +240,7 @@ function ideaDialog(record = {}) {
 function detailsDialog(id) {
   const g = goal(id); if (!g) return;
   const children = visible('goals').filter(c => c.parentId === id), tasks = visible('tasks').filter(t => t.goalId === id && !t.parentTaskId);
-  openDialog(esc(g.title), `<p class="dialog-intro">${esc(g.period)} · ${g.progress}%</p>${g.notes ? `<p class="detail-notes">${esc(g.notes)}</p>` : ''}<div class="detail-heading"><h3>Связанные цели и проекты</h3>${button('edit-goal', 'Редактировать', 'edit', 'text-button', `data-id="${g.id}"`)}</div>${children.length ? children.map(c => `<button class="linked-goal" data-action="open-goal" data-id="${c.id}"><span>${esc(c.title)}<small>${labels[c.level]} · ${c.progress}%</small></span>${icon('arrow')}</button>`).join('') : '<p class="muted">Связанных целей пока нет. Укажите эту цель как родительскую при создании следующего уровня.</p>'}<div class="detail-heading"><h3>Задачи проекта</h3>${button('project-task', 'Добавить задачу', 'plus', 'text-button', `data-id="${g.id}"`)}</div>${tasks.length ? `<div class="task-list">${tasks.map(t => `<div class="detail-task">${taskRow(t)}<small>${dateLabel(t.date)}</small></div>`).join('')}</div>` : '<p class="muted">Какой первый небольшой шаг приблизит результат?</p>'}`);
+  openDialog(esc(g.title), `<p class="dialog-intro">${esc(calendarPeriodLabel(g.period))} · ${g.progress}%</p>${g.notes ? `<p class="detail-notes">${esc(g.notes)}</p>` : ''}<div class="detail-heading"><h3>Связанные цели и проекты</h3>${button('edit-goal', 'Редактировать', 'edit', 'text-button', `data-id="${g.id}"`)}</div>${children.length ? children.map(c => `<button class="linked-goal" data-action="open-goal" data-id="${c.id}"><span>${esc(c.title)}<small>${labels[c.level]} · ${c.progress}%</small></span>${icon('arrow')}</button>`).join('') : '<p class="muted">Связанных целей пока нет. Укажите эту цель как родительскую при создании следующего уровня.</p>'}<div class="detail-heading"><h3>Задачи проекта</h3>${button('project-task', 'Добавить задачу', 'plus', 'text-button', `data-id="${g.id}"`)}</div>${tasks.length ? `<div class="task-list">${tasks.map(t => `<div class="detail-task">${taskRow(t)}<small>${dateLabel(t.date)}</small></div>`).join('')}</div>` : '<p class="muted">Какой первый небольшой шаг приблизит результат?</p>'}`);
 }
 function settingsDialog() {
   openDialog('Ваше личное пространство', `<div class="settings-section"><h3>${icon('download')} Перенести планы без переписывания</h3><p>Можно сразу перенести уже введённые планы на другое устройство.</p><ol class="settings-steps"><li>На ПК нажмите «Скачать копию» в приложении, где вы вводили планы.</li><li>Передайте скачанный JSON-файл на телефон удобным способом.</li><li>На телефоне откройте Опору → настройки → «Импортировать» и выберите этот файл.</li></ol><p>Импорт объединяет копию с текущими планами. Если на ПК вы работали через localhost, скачайте копию именно там, затем импортируйте её в приложение по опубликованной ссылке.</p><div class="button-row">${button('export', 'Скачать копию', 'download', 'btn btn-light')}<label class="btn btn-light file-label">${icon('upload')} Импортировать<input id="import-file" type="file" accept=".json,application/json"></label></div></div>
@@ -261,8 +294,8 @@ function example() {
   const before = Object.fromEntries(['tasks', 'goals', 'ideas', 'days'].map(key => [key, new Set(state[key].map(r => r.id))]));
   const strategy = put('goals', { id: uid(), title: 'Построить жизнь с местом для важного', level: 'strategy', period: '2027–2031 · 5 лет', notes: 'Больше самостоятельности, времени для близких и работы, которая имеет смысл.', progress: 10, parentId: '' });
   const quarter = put('goals', { id: uid(), title: 'Создать устойчивую систему планирования', level: 'quarter', period: 'IV квартал 2026', notes: 'Планировать спокойно и доводить выбранное до результата.', progress: 20, parentId: strategy.id });
-  const month = put('goals', { id: uid(), title: 'Освободить внимание от незакрытых дел', level: 'month', period: 'Октябрь 2026', notes: 'У всех обещаний себе есть понятное место.', progress: 25, parentId: quarter.id });
-  const week = put('goals', { id: uid(), title: 'Попробовать новый утренний ритуал', level: 'week', period: 'Эта неделя', notes: 'Пять минут на план, один главный результат дня.', progress: 40, parentId: month.id });
+  const month = put('goals', { id: uid(), title: 'Освободить внимание от незакрытых дел', level: 'month', period: calendarPeriod('month', dateKey().slice(0, 7)).period, notes: 'У всех обещаний себе есть понятное место.', progress: 25, parentId: quarter.id });
+  const week = put('goals', { id: uid(), title: 'Попробовать новый утренний ритуал', level: 'week', period: calendarPeriod('week', dateKey()).period, notes: 'Пять минут на план, один главный результат дня.', progress: 40, parentId: month.id });
   const project = put('goals', { id: uid(), title: 'Личная система планирования', level: 'project', period: 'Октябрь 2026', notes: 'Собрать цели и мысли в одном спокойном месте.', progress: 30, parentId: week.id });
   const existingDay = day();
   put('days', { id: selectedDate, focus: existingDay.focus || 'Сделать первый шаг к своей системе планирования', review: existingDay.review });
@@ -309,10 +342,22 @@ function handleAction(event) {
   else if (action === 'new-goal') goalDialog({}, target.dataset.level);
   else if (action === 'edit-goal') goalDialog(goal(id));
   else if (action === 'plan-level') { planLevel = target.dataset.level; render(); }
+  else if (action === 'plan-scope') { planView.scope = target.dataset.scope; render(); }
+  else if (action === 'plan-previous' || action === 'plan-next') {
+    const direction = action === 'plan-previous' ? -1 : 1;
+    if (planLevel === 'week') planView.week = shiftDate(planView.week, direction * 7);
+    else { const d = new Date(planView.month + '-01T12:00:00'); d.setMonth(d.getMonth() + direction); planView.month = dateKey(d).slice(0, 7); }
+    render();
+  }
   else if (action === 'period-kind') { periodView.kind = target.dataset.kind; render(); }
   else if (action === 'period-index') { periodView[periodView.kind] = Number(target.dataset.index); render(); }
   else if (action === 'goal-details') detailsDialog(id);
-  else if (action === 'open-goal') { const g = goal(id); if (!g) return; closeDialog(); page = ['week', 'month'].includes(g.level) ? 'plans' : g.level; planLevel = g.level; if (g.level === 'quarter') { const p = parsePlanningPeriod(g.period); if (p) { periodView.kind = p.kind; periodView.year = p.year; periodView[p.kind] = p.index; } else periodView.kind = 'unassigned'; } render(); }
+  else if (action === 'open-goal') {
+    const g = goal(id); if (!g) return; closeDialog(); page = ['week', 'month'].includes(g.level) ? 'plans' : g.level; if (['week', 'month'].includes(g.level)) planLevel = g.level;
+    if (g.level === 'quarter') { const p = parsePlanningPeriod(g.period); if (p) { periodView.kind = p.kind; periodView.year = p.year; periodView[p.kind] = p.index; } else periodView.kind = 'unassigned'; }
+    if (['month', 'week'].includes(g.level)) { const p = parseCalendarPeriod(g.period); planView.scope = p ? 'period' : 'unassigned'; if (p) { planView.month = p.start.slice(0, 7); planView.week = p.start; } }
+    render();
+  }
   else if (action === 'project-task') taskDialog({ goalId: id });
   else if (action === 'idea-filter') { ideaFilter = target.dataset.filter; render(); }
   else if (action === 'edit-idea') ideaDialog(visible('ideas').find(i => i.id === id));
@@ -364,7 +409,16 @@ document.addEventListener('submit', event => {
   }
   else if (formId === 'goal-form') {
     const title = values.title.trim(); if (!title) return;
-    let period = values.period.trim();
+    let period = (values.period || '').trim();
+    if (values.calendarKind) {
+      try { period = calendarPeriodFromForm(form); }
+      catch (error) { toast(error.message); return; }
+      const p = parseCalendarPeriod(period);
+      if (['month', 'week'].includes(values.level)) {
+        planView.scope = p ? 'period' : 'unassigned';
+        if (p) { planView.month = p.start.slice(0, 7); planView.week = p.start; }
+      }
+    }
     if (values.level === 'quarter' && values.periodKind !== 'legacy') {
       try { period = planningPeriod(values.periodKind, Number(values.periodIndex), Number(values.periodYear)); }
       catch (error) { toast(error.message); return; }
@@ -380,6 +434,7 @@ document.addEventListener('submit', event => {
 });
 document.addEventListener('input', event => {
   const target = event.target;
+  if (target.closest('#goal-form') && (target.name.startsWith('calendar') || target.name === 'periodText')) updateCalendarFields(target.closest('form'));
   if (target.closest('#goal-form') && ['periodKind', 'periodYear', 'periodIndex'].includes(target.name)) updateGoalPeriodFields(target.closest('form'));
   if (target.id === 'day-focus' || target.id === 'day-review') put('days', { ...day(), [target.id === 'day-focus' ? 'focus' : 'review']: target.value });
   if (target.dataset.goal) {
@@ -387,6 +442,11 @@ document.addEventListener('input', event => {
   }
 });
 document.addEventListener('change', async event => {
+  if (event.target.id === 'plan-date') {
+    try { const p = calendarPeriod(planLevel, event.target.value); planView[planLevel] = planLevel === 'month' ? p.start.slice(0, 7) : p.start; render(); }
+    catch (error) { event.target.value = planView[planLevel]; toast(error.message); }
+  }
+  if (event.target.closest('#goal-form') && (event.target.name.startsWith('calendar') || event.target.name === 'periodText')) updateCalendarFields(event.target.closest('form'));
   if (event.target.id === 'period-year') { const year = Number(event.target.value); if (Number.isInteger(year) && year >= 1900 && year <= 2200) { periodView.year = year; render(); } else { event.target.value = periodView.year; toast('Год должен быть от 1900 до 2200.'); } }
   if (event.target.closest('#goal-form') && ['periodKind', 'periodYear', 'periodIndex'].includes(event.target.name)) updateGoalPeriodFields(event.target.closest('form'));
   if (event.target.id === 'date-picker' && validDate(event.target.value)) { selectedDate = event.target.value; render(); }
