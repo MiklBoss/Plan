@@ -230,4 +230,26 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   .page-footer{font-size:12px;padding:18px 16px}
   #toast{font-size:15px;bottom:calc(96px + env(safe-area-inset-bottom))}
 }
+.period-selector{border:1px solid #a8ba98;border-radius:12px;background:#f0f5e9;padding:22px;margin-bottom:28px}
+.period-toolbar{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.period-toolbar .tabs{margin:0;flex-wrap:wrap;border-bottom-color:#a8ba98}
+.period-year{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:600;color:#334d2c}
+.period-year input{width:110px;padding:9px 10px;font-size:16px;background:#fff;border:1px solid #768b6b;border-radius:7px;color:#243a2d}
+.period-options{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:20px}
+.period-option{display:flex;flex-direction:column;gap:8px;text-align:left;background:#fff;border:1px solid #aab99d;border-radius:9px;padding:16px 14px;line-height:1.6;min-width:0}
+.period-option strong{font-size:16px;color:#243a2d}
+.period-option>span{font-size:14px;color:#4c5f43}
+.period-option small{font-size:14px;color:#4c5f43}
+.period-option.selected{background:#dce9ce;border:2px solid #486c37;padding:15px 13px}
+.period-option:hover{background:#e6efd9}
+.period-current{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:#344d2b;font-size:16px;line-height:1.75;margin:19px 0 0}
+.period-current>.icon{width:18px;height:18px}
+.goal-calendar{border:1px solid #a8ba98;border-radius:9px;background:#f2f6ec;padding:16px;margin:0 0 20px;min-width:0}
+.goal-calendar legend{font-size:16px;font-weight:600;padding:0 7px;color:#344d2b}
+.goal-calendar .field:last-child{margin-bottom:0}
+.period-form-preview{font-size:14px;color:#344d2b;line-height:1.7;margin:10px 0 0}
+.settings-steps{padding-left:22px;color:#4c5f43;font-size:15px;line-height:1.8}
+.settings-steps li+li{margin-top:7px}
+@media(max-width:900px){.period-options{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.nav-item[data-page="quarter"]>span:after{content:'Периоды'}.period-selector{padding:16px}.period-toolbar{gap:14px}.period-toolbar .tabs{width:100%}.period-toolbar .tab{font-size:15px}.period-options{gap:10px}.period-option{padding:13px 11px}.period-option.selected{padding:12px 10px}.period-option strong{font-size:16px}.period-year{width:100%;justify-content:space-between}.period-current{font-size:15px}.goal-calendar{padding:13px}.settings-steps{font-size:15px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}

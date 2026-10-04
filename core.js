@@ -10,6 +10,22 @@ export function validDate(value) {
   const d = new Date(value + 'T12:00:00');
   return Number.isFinite(d.getTime()) && dateKey(d) === value;
 }
+export function planningPeriod(kind, index, year) {
+  if (!['half', 'quarter'].includes(kind) || !Number.isInteger(index) || index < 1 || index > (kind === 'half' ? 2 : 4) || !Number.isInteger(year) || year < 1900 || year > 2200) throw new Error('Выберите полугодие или квартал, его номер и год.');
+  return `${['I', 'II', 'III', 'IV'][index - 1]} ${kind === 'half' ? 'полугодие' : 'квартал'} ${year}`;
+}
+export function parsePlanningPeriod(value) {
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^(I{1,3}|IV|[1-4])(?:-?[ей])?\s+(полугодие|квартал)\s+(\d{4})(?:\s*г(?:од(?:а)?)?\.?)?$/i);
+  if (!match) return null;
+  const kind = match[2].toLowerCase() === 'полугодие' ? 'half' : 'quarter';
+  const index = ['I', 'II', 'III', 'IV'].indexOf(match[1].toUpperCase()) + 1 || Number(match[1]), year = Number(match[3]);
+  try { planningPeriod(kind, index, year); return { kind, index, year }; } catch { return null; }
+}
+export function planningPeriodRange(kind, index) {
+  planningPeriod(kind, index, 2000);
+  return (kind === 'half' ? ['январь — июнь', 'июль — декабрь'] : ['январь — март', 'апрель — июнь', 'июль — сентябрь', 'октябрь — декабрь'])[index - 1];
+}
 export function validateState(input) {
   if (!input || input.version !== 1) throw new Error('Это не резервная копия Опоры поддерживаемой версии.');
   const result = emptyState();
