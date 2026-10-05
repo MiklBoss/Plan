@@ -253,6 +253,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .dated-plans{border:1px solid #a8ba98;border-radius:9px;background:#f0f5e9;padding:12px 16px;margin-top:24px}
 .dated-plans summary{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:16px;color:#243a2d}
 .dated-plans summary>span{margin-left:auto}
+.day-closure{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px;padding:16px;background:#f0f5e9;border:1px solid #a8ba98;border-radius:9px}
+.day-closure p{font-size:15px;color:#344d2b;line-height:1.7;margin:0;flex:1}
+@media(max-width:650px){.day-closure{flex-direction:column;align-items:stretch;padding:14px}.day-closure .btn{width:100%;font-size:16px}}
 .period-tag{overflow-wrap:anywhere;white-space:normal;line-height:1.6}
 @media(max-width:650px){.calendar-navigation{gap:10px}.calendar-navigation .field{flex-basis:100%;order:-1}.calendar-navigation>.btn{flex:1}.goal-calendar .form-columns{grid-template-columns:1fr}.dated-plans{padding:12px}}
 .goal-calendar .field:last-child{margin-bottom:0}

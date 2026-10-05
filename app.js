@@ -42,8 +42,8 @@ const uid = () => crypto.randomUUID();
 const visible = key => active(state[key]);
 const goal = id => visible('goals').find(g => g.id === id);
 const task = id => visible('tasks').find(t => t.id === id);
-const isHot = t => t.hot || visible('tasks').some(c => c.parentTaskId === t.id && c.date === t.date && c.hot && !c.done);
-const day = () => visible('days').find(d => d.id === selectedDate) || { id: selectedDate, focus: '', review: '' };
+const isHot = t => t.hot || visible('tasks').some(c => c.parentTaskId === t.id && c.date === t.date && c.hot && (!c.done || !visible('days').find(d => d.id === t.date)?.closed));
+const day = () => visible('days').find(d => d.id === selectedDate) || { id: selectedDate, focus: '', review: '', closed: false };
 function save() {
   try { if (storageFailed && localStorage.getItem(KEY)) return; localStorage.setItem(KEY, JSON.stringify(state)); storageFailed = false; }
   catch { storageFailed = true; toast('Не удалось сохранить в браузере. Скачайте резервную копию.'); }
@@ -96,7 +96,9 @@ function render() {
 }
 function renderDay() {
   const today = dateKey(), record = day(), tasks = visible('tasks').filter(t => t.date === selectedDate), roots = tasks.filter(t => !tasks.some(p => p.id === t.parentTaskId)), completed = tasks.filter(t => t.done).length;
-  const hot = roots.filter(t => isHot(t) && !t.done), ordinary = roots.filter(t => !isHot(t) && !t.done), done = roots.filter(t => t.done);
+  const shown = record.closed ? roots.filter(t => !t.done) : roots;
+  const hot = shown.filter(isHot), ordinary = shown.filter(t => !isHot(t));
+  const done = tasks.filter(t => t.done && !tasks.some(p => p.id === t.parentTaskId && p.done));
   const weekday = new Date(selectedDate + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'long' });
   return `<section class="page-heading"><div><div class="eyebrow">${selectedDate === today ? 'СЕГОДНЯ — ХОРОШИЙ ДЕНЬ ДЛЯ ВАЖНОГО' : 'У КАЖДОГО ДНЯ СВОЙ РИТМ'}</div><h1>${selectedDate === today ? 'Начнём с главного' : 'План на ' + dateLabel(selectedDate)}<span class="heading-dot">.</span></h1><p>Не весь список жизни. Только то, что имеет значение сегодня.</p></div><div class="date-display"><span>${weekday}</span><strong>${dateLabel(selectedDate)}</strong><small>${new Date(selectedDate + 'T12:00:00').getFullYear()}</small></div></section>
     <div class="day-navigation"><div class="week-strip">${Array.from({ length: 7 }, (_, i) => {
@@ -105,11 +107,11 @@ function renderDay() {
       return `<button data-action="date" data-date="${key}" class="week-day ${key === selectedDate ? 'selected' : ''} ${key === today ? 'is-today' : ''}" aria-label="${dateLabel(key)}"><span>${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][i]}</span><b>${Number(key.slice(-2))}</b><i class="${num ? 'has-tasks' : ''}"></i></button>`;
     }).join('')}</div><div class="date-controls">${button('previous-day', '', 'back', 'icon-button', 'aria-label="Предыдущий день"')}${button('today', 'Сегодня', '', 'btn btn-small btn-light')}${button('next-day', '', 'chevron', 'icon-button', 'aria-label="Следующий день"')}<label class="date-picker" title="Выбрать дату">${icon('day')}<input type="date" id="date-picker" value="${selectedDate}" aria-label="Выбрать дату"></label></div></div>
     <div class="day-grid"><div class="day-main"><section class="focus-card"><div class="focus-top"><span class="small-label">${icon('focus')} ФОКУС ДНЯ</span><span class="focus-tag">Одно самое важное</span></div><label class="sr-only" for="day-focus">Фокус дня</label><textarea id="day-focus" rows="2" maxlength="500" placeholder="Что сделает этот день не напрасным?">${esc(record.focus)}</textarea><div class="focus-bottom"><span>${icon('leaf')} Выберите результат, а не список дел</span>${button('focus-mode', 'Сосредоточиться', 'arrow', 'focus-enter')}</div><svg class="focus-decoration" viewBox="0 0 180 180" aria-hidden="true"><g fill="none" stroke="currentColor"><circle cx="130" cy="130" r="95"/><circle cx="130" cy="130" r="72"/><circle cx="130" cy="130" r="49"/><path d="M35 130h190M130 35v190"/></g></svg></section>
-    <section class="task-section"><div class="section-heading"><h2>${icon('flame')} Горячие задачи <span class="number-badge">${hot.length}</span></h2><span class="section-caption">До 3 главных — уже достаточно</span></div>${hot.length ? `<div class="task-list hot-list">${hot.map(taskRow).join('')}</div>` : '<div class="empty-inline">Выберите задачи, которые требуют внимания сегодня.</div>'}</section>
-    <section class="task-section"><div class="section-heading"><h2>Остальные задачи <span class="number-badge">${ordinary.length}</span></h2>${button('new-task', 'Добавить', 'plus', 'text-button')}</div>${ordinary.length ? `<div class="task-list">${ordinary.map(taskRow).join('')}</div>` : '<div class="empty-inline">Здесь может быть пусто. Оставьте место для жизни.</div>'}<form id="quick-task" class="quick-add">${icon('plus')}<input name="title" maxlength="500" placeholder="Небольшой следующий шаг…" aria-label="Новая задача" required autocomplete="off"><button type="submit" class="quick-submit" aria-label="Добавить задачу">${icon('arrow')}</button></form></section>
-    ${done.length ? `<details class="completed-section"><summary>${icon('check')} Завершено сегодня <span>${done.length}</span></summary><div class="task-list">${done.map(taskRow).join('')}</div></details>` : ''}
+    <section class="task-section"><div class="section-heading"><h2>${icon('flame')} Горячие задачи <span class="number-badge">${hot.filter(t => !t.done).length}</span></h2><span class="section-caption">До 3 главных — уже достаточно</span></div>${hot.length ? `<div class="task-list hot-list">${hot.map(t => taskRow(t, { hideCompleted: record.closed })).join('')}</div>` : '<div class="empty-inline">Выберите задачи, которые требуют внимания сегодня.</div>'}</section>
+    <section class="task-section"><div class="section-heading"><h2>Остальные задачи <span class="number-badge">${ordinary.filter(t => !t.done).length}</span></h2>${button('new-task', 'Добавить', 'plus', 'text-button')}</div>${ordinary.length ? `<div class="task-list">${ordinary.map(t => taskRow(t, { hideCompleted: record.closed })).join('')}</div>` : '<div class="empty-inline">Здесь может быть пусто. Оставьте место для жизни.</div>'}<form id="quick-task" class="quick-add">${icon('plus')}<input name="title" maxlength="500" placeholder="Небольшой следующий шаг…" aria-label="Новая задача" required autocomplete="off"><button type="submit" class="quick-submit" aria-label="Добавить задачу">${icon('arrow')}</button></form></section>
+    ${record.closed && done.length ? `<details class="completed-section"><summary>${icon('check')} Выполненные задачи · архив <span>${completed}</span></summary><div class="task-list">${done.map(taskRow).join('')}</div></details>` : ''}
     ${overduePanel()}${datedPlansPanel()}
-    <section class="review-card"><div class="section-heading"><h2>${icon('moon')} Закрыть день</h2><span class="section-caption">Без оценок. С заботой о себе.</span></div><label for="day-review">Что получилось? Что хочется взять в завтра?</label><textarea id="day-review" rows="2" maxlength="5000" placeholder="Даже маленький шаг — это движение вперёд.">${esc(record.review)}</textarea></section>
+    <section class="review-card"><div class="section-heading"><h2>${icon('moon')} Закрыть день</h2><span class="section-caption">Без оценок. С заботой о себе.</span></div><label for="day-review">Что получилось? Что хочется взять в завтра?</label><textarea id="day-review" rows="2" maxlength="5000" placeholder="Даже маленький шаг — это движение вперёд.">${esc(record.review)}</textarea>${dayClosureControls(record)}</section>
     </div><aside class="day-aside"><section class="card progress-card"><div class="section-heading"><h3>Ритм дня</h3>${icon('spark')}</div><div class="progress-ring" style="--progress:${tasks.length ? completed / tasks.length * 100 : 0}%"><div><strong>${completed}<span> / ${tasks.length}</span></strong><small>задач завершено</small></div></div><p>${completed && completed === tasks.length ? 'Важное сделано. Можно выдохнуть.' : 'Каждый маленький шаг считается.'}</p></section>
     ${timerCard()}
     <section class="card capture-card"><span class="capture-illustration">${icon('inbox')}</span><h3>Мысль пришла не вовремя?</h3><p>Запишите её и вернитесь к делу.<br>Она никуда не потеряется.</p>${button('capture', 'Освободить голову', 'plus', 'btn btn-light')}</section>
@@ -121,16 +123,19 @@ function overduePanel() {
   if (!overdue.length || selectedDate !== dateKey()) return '';
   return `<details class="overdue-section"><summary>${icon('inbox')} Остались с прошлых дней <span>${overdue.length}</span></summary><p class="muted">Перенесите нужное или выгрузите задачу, чтобы она не забирала внимание.</p>${overdue.map(t => `<div class="overdue-row"><span>${esc(t.title)}<small>${dateLabel(t.date)}</small></span>${button('move-today', 'На сегодня', '', 'text-button', `data-id="${t.id}"`)}${button('park-task', 'Отложить', '', 'text-button', `data-id="${t.id}"`)}</div>`).join('')}</details>`;
 }
-function taskRow(t) {
-  const children = visible('tasks').filter(c => c.parentTaskId === t.id && c.date === t.date), linked = goal(t.goalId);
-  return `<div class="task-wrapper"><div class="task-row ${t.done ? 'done' : ''} ${t.parentTaskId ? 'subtask' : ''}"><button class="task-check ${t.done ? 'checked' : ''}" data-action="toggle-task" data-id="${t.id}" aria-label="${t.done ? 'Вернуть' : 'Завершить'}: ${esc(t.title)}" aria-pressed="${t.done}">${t.done ? icon('check') : ''}</button><button class="task-text" data-action="edit-task" data-id="${t.id}"><span>${esc(t.title)}</span>${linked || children.length || t.notes ? `<small>${linked ? `${icon('project')}${esc(linked.title)}` : ''}${children.length ? `<span>${children.filter(c => c.done).length}/${children.length} подзадач</span>` : ''}${t.notes ? '<span>Есть заметка</span>' : ''}</small>` : ''}</button><div class="task-actions">${!t.parentTaskId ? button('subtask', '', 'plus', 'icon-button', `data-id="${t.id}" aria-label="Добавить подзадачу"`) : ''}${button('hot-task', '', 'flame', `icon-button ${t.hot ? 'is-hot' : ''}`, `data-id="${t.id}" aria-label="${t.hot ? 'Снять' : 'Добавить'} приоритет" aria-pressed="${t.hot}"`)}</div></div>${children.map(taskRow).join('')}</div>`;
+function dayClosureControls(record) {
+  return `<div class="day-closure"><p>${record.closed ? 'День закрыт. Выполненные задачи сохранены, незавершённые остаются в плане.' : 'Выполненные задачи остаются в списке зачёркнутыми, пока вы не закроете день.'}</p>${button(record.closed ? 'reopen-day' : 'close-day', record.closed ? 'Открыть день снова' : 'Закрыть день', record.closed ? 'reset' : 'check', record.closed ? 'btn btn-light' : 'btn btn-primary')}</div>`;
+}
+function taskRow(t, { hideCompleted = false } = {}) {
+  const children = visible('tasks').filter(c => c.parentTaskId === t.id && c.date === t.date && (!hideCompleted || !c.done)), linked = goal(t.goalId);
+  return `<div class="task-wrapper"><div class="task-row ${t.done ? 'done' : ''} ${t.parentTaskId ? 'subtask' : ''}"><button class="task-check ${t.done ? 'checked' : ''}" data-action="toggle-task" data-id="${t.id}" aria-label="${t.done ? 'Вернуть' : 'Завершить'}: ${esc(t.title)}" aria-pressed="${t.done}">${t.done ? icon('check') : ''}</button><button class="task-text" data-action="edit-task" data-id="${t.id}"><span>${esc(t.title)}</span>${linked || children.length || t.notes ? `<small>${linked ? `${icon('project')}${esc(linked.title)}` : ''}${children.length ? `<span>${children.filter(c => c.done).length}/${children.length} подзадач</span>` : ''}${t.notes ? '<span>Есть заметка</span>' : ''}</small>` : ''}</button><div class="task-actions">${!t.parentTaskId ? button('subtask', '', 'plus', 'icon-button', `data-id="${t.id}" aria-label="Добавить подзадачу"`) : ''}${button('hot-task', '', 'flame', `icon-button ${t.hot ? 'is-hot' : ''}`, `data-id="${t.id}" aria-label="${t.hot ? 'Снять' : 'Добавить'} приоритет" aria-pressed="${t.hot}"`)}</div></div>${children.map(c => taskRow(c, { hideCompleted })).join('')}</div>`;
 }
 function timerCard() {
   return `<section class="card timer-card"><div class="section-heading"><h3>${icon('focus')} Время для фокуса</h3><span class="timer-dot"></span></div><p>Одно дело. Без переключений.</p><div class="timer-time" id="timer-time">25:00</div><div class="timer-controls">${button('timer-toggle', timer.end ? 'Пауза' : 'Начать 25 минут', timer.end ? 'pause' : 'play', 'btn btn-primary', 'id="timer-toggle"')}${button('timer-reset', '', 'reset', 'icon-button', 'aria-label="Сбросить таймер"')}</div><small id="timer-sessions">${timer.sessions ? `Сегодня в этой вкладке: ${timer.sessions} сессий` : 'Можно начать с одного спокойного отрезка'}</small></section>`;
 }
 function renderFocus() {
-  const tasks = visible('tasks').filter(t => t.date === selectedDate && !t.done && isHot(t) && !t.parentTaskId);
-  app.innerHTML = `<main class="focus-screen"><div class="focus-screen-top"><span class="brand mini-brand">опора.</span>${button('exit-focus', 'Вернуться к плану', 'close', 'btn btn-light')}</div><div class="focus-screen-content"><div class="eyebrow">СЕЙЧАС ЕСТЬ ТОЛЬКО ЭТОТ ШАГ</div><h1>${esc(day().focus || 'Выберите одно дело и побудьте с ним.')}</h1><p class="muted">${dateLabel(selectedDate)} · остальное может подождать</p>${timerCard()}${tasks.length ? `<div class="focus-tasks">${tasks.map(taskRow).join('')}</div>` : ''}${button('capture', 'Записать отвлекающую мысль', 'plus', 'text-button')}<span class="escape-hint">Esc — вернуться к плану</span></div></main>`;
+  const tasks = visible('tasks').filter(t => t.date === selectedDate && (!day().closed || !t.done) && isHot(t) && !t.parentTaskId);
+  app.innerHTML = `<main class="focus-screen"><div class="focus-screen-top"><span class="brand mini-brand">опора.</span>${button('exit-focus', 'Вернуться к плану', 'close', 'btn btn-light')}</div><div class="focus-screen-content"><div class="eyebrow">СЕЙЧАС ЕСТЬ ТОЛЬКО ЭТОТ ШАГ</div><h1>${esc(day().focus || 'Выберите одно дело и побудьте с ним.')}</h1><p class="muted">${dateLabel(selectedDate)} · остальное может подождать</p>${timerCard()}${tasks.length ? `<div class="focus-tasks">${tasks.map(t => taskRow(t, { hideCompleted: day().closed })).join('')}</div>` : ''}${button('capture', 'Записать отвлекающую мысль', 'plus', 'text-button')}<span class="escape-hint">Esc — вернуться к плану</span></div></main>`;
   updateTimer();
 }
 function datedPlansPanel() {
@@ -325,11 +330,19 @@ function handleAction(event) {
   else if (action === 'date') { selectedDate = target.dataset.date; render(); }
   else if (action === 'previous-day' || action === 'next-day') { selectedDate = shiftDate(selectedDate, action === 'previous-day' ? -1 : 1); render(); }
   else if (action === 'today') { selectedDate = dateKey(); render(); }
+  else if (action === 'close-day' || action === 'reopen-day') {
+    put('days', { ...day(), closed: action === 'close-day' }); render();
+    toast(action === 'close-day' ? 'День закрыт. Выполненные задачи в архиве.' : 'День открыт. Все задачи снова видны.');
+  }
   else if (action === 'new-task') taskDialog();
   else if (action === 'edit-task') taskDialog(task(id));
   else if (action === 'subtask') taskDialog({}, '', id);
   else if (action === 'toggle-task' || action === 'hot-task') {
     const t = task(id); if (!t) return;
+    if (action === 'toggle-task' && t.done) {
+      const taskDay = visible('days').find(d => d.id === t.date);
+      if (taskDay?.closed) put('days', { ...taskDay, closed: false });
+    }
     put('tasks', { ...t, [action === 'toggle-task' ? 'done' : 'hot']: !t[action === 'toggle-task' ? 'done' : 'hot'] }); render();
     if (action === 'toggle-task' && !t.done) { visible('tasks').filter(c => c.parentTaskId === id && !c.done).forEach(c => put('tasks', { ...c, done: true })); render(); }
     if (dialog.open && dialog.querySelector('.detail-task')) detailsDialog(t.goalId);

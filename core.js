@@ -76,8 +76,8 @@ export function validateState(input) {
       const base = { id: record.id, updatedAt: record.updatedAt, deleted: record.deleted === true };
       if (base.deleted) return base;
       if (collection === 'days') {
-        if (!validDate(record.id) || !string(record.focus, 500) || !string(record.review, 5000)) throw new Error('Неверный формат плана дня.');
-        return { ...base, focus: record.focus, review: record.review };
+        if (!validDate(record.id) || !string(record.focus, 500) || !string(record.review, 5000) || (record.closed !== undefined && typeof record.closed !== 'boolean')) throw new Error('Неверный формат плана дня.');
+        return { ...base, focus: record.focus, review: record.review, closed: record.closed === true };
       }
       if (!string(record.title, 500) || !record.title.trim() || !string(record.notes || '', 5000)) throw new Error('Неверный формат текста записи.');
       const text = { ...base, title: record.title, notes: record.notes || '' };
