@@ -79,7 +79,8 @@ const button = (action, text, name = '', cls = '', attrs = '') => `<button type=
 const dateLabel = key => new Date(key + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
 function sidebar() {
   const count = visible('ideas').filter(i => i.status === 'inbox').length;
-  const nav = (id, title, subtitle, name) => `<button class="nav-item ${page === id ? 'active' : ''}" data-action="navigate" data-page="${id}" ${page === id ? 'aria-current="page"' : ''}>${icon(name)}<span>${title}${subtitle ? `<small>${subtitle}</small>` : ''}</span>${id === 'inbox' && count ? `<b class="nav-count">${count}</b>` : ''}</button>`;
+  const mobileLabels = { day: 'Сегодня', strategy: 'Стратегия', quarter: 'Периоды', plans: 'Планы', project: 'Проекты', inbox: 'Мысли' };
+  const nav = (id, title, subtitle, name) => `<button class="nav-item ${page === id ? 'active' : ''}" data-action="navigate" data-page="${id}" aria-label="${esc(title)}${id === 'inbox' && count ? `, новых мыслей: ${count}` : ''}" ${page === id ? 'aria-current="page"' : ''}>${icon(name)}<span class="nav-label-full">${title}${subtitle ? `<small>${subtitle}</small>` : ''}</span><span class="nav-label-mobile" aria-hidden="true">${mobileLabels[id]}</span>${id === 'inbox' && count ? `<b class="nav-count" aria-hidden="true">${count > 99 ? '99+' : count}</b>` : ''}</button>`;
   return `<aside class="sidebar"><a class="brand" href="#" data-action="navigate" data-page="day"><span class="brand-symbol"><i></i><i></i><i></i></span>опора<span class="brand-period">.</span></a><p class="brand-caption">Пространство для важного</p>
     <div class="nav-label">МОЙ ДЕНЬ</div>${nav('day', 'Сегодня', 'Один день. Один фокус.', 'day')}
     <div class="nav-label horizons-label">ГОРИЗОНТЫ</div>${nav('strategy', 'Стратегия', '1–10 лет', 'strategy')}${nav('quarter', 'Полугодие · квартал', '', 'quarter')}${nav('plans', 'Месяц · неделя', '', 'month')}${nav('project', 'Проекты', '', 'project')}
