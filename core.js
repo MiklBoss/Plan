@@ -1,6 +1,6 @@
-export const COLLECTIONS = ['tasks', 'goals', 'ideas', 'days'];
+export const COLLECTIONS = ['tasks', 'goals', 'ideas', 'days', 'rewards', 'ledger', 'gameSettings'];
 export const LEVELS = ['strategy', 'quarter', 'month', 'week', 'project'];
-export function emptyState() { return { version: 1, tasks: [], goals: [], ideas: [], days: [] }; }
+export function emptyState() { return { version: 1, tasks: [], goals: [], ideas: [], days: [], rewards: [], ledger: [], gameSettings: [] }; }
 export function dateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
@@ -68,6 +68,7 @@ export function validateState(input) {
   const result = emptyState();
   const string = (v, limit) => typeof v === 'string' && v.length <= limit;
   for (const collection of COLLECTIONS) {
+    if (['rewards', 'ledger', 'gameSettings'].includes(collection) && input[collection] === undefined) continue;
     if (!Array.isArray(input[collection]) || input[collection].length > 10000) throw new Error('Неверный формат или слишком много записей.');
     const ids = new Set();
     result[collection] = input[collection].map(record => {
@@ -75,6 +76,23 @@ export function validateState(input) {
       ids.add(record.id);
       const base = { id: record.id, updatedAt: record.updatedAt, deleted: record.deleted === true };
       if (base.deleted) return base;
+      if (collection === 'gameSettings') {
+        if (!Number.isSafeInteger(record.budgetCents) || record.budgetCents < 0 || record.budgetCents > 100000000) throw new Error('Неверный бюджет наград.');
+        return { ...base, budgetCents: record.budgetCents };
+      }
+      if (collection === 'rewards') {
+        if (!string(record.title, 500) || !record.title.trim() || !Number.isSafeInteger(record.cost) || record.cost < 1 || record.cost > 1000000 || !Number.isSafeInteger(record.euroCents) || record.euroCents < 0 || record.euroCents > 100000000) throw new Error('Неверный формат награды.');
+        return { ...base, title: record.title, cost: record.cost, euroCents: record.euroCents };
+      }
+      if (collection === 'ledger') {
+        if (!['earn', 'buy'].includes(record.kind) || !string(record.title, 500) || !record.title.trim() || !validDate(record.date) || !Number.isSafeInteger(record.coins) || record.coins < 1 || record.coins > 1000000) throw new Error('Неверный журнал монет.');
+        if (record.kind === 'earn') {
+          if (!string(record.groupId, 100) || !record.groupId || !Number.isSafeInteger(record.cap) || record.cap < 1 || record.cap > 1000000) throw new Error('Неверная награда за задачу.');
+          return { ...base, kind: 'earn', title: record.title, date: record.date, coins: record.coins, groupId: record.groupId, cap: record.cap };
+        }
+        if (!Number.isSafeInteger(record.euroCents) || record.euroCents < 0 || record.euroCents > 100000000) throw new Error('Неверная покупка.');
+        return { ...base, kind: 'buy', title: record.title, date: record.date, coins: record.coins, euroCents: record.euroCents };
+      }
       if (collection === 'days') {
         if (!validDate(record.id) || !string(record.focus, 500) || !string(record.review, 5000) || (record.closed !== undefined && typeof record.closed !== 'boolean')) throw new Error('Неверный формат плана дня.');
         return { ...base, focus: record.focus, review: record.review, closed: record.closed === true };
@@ -83,7 +101,7 @@ export function validateState(input) {
       const text = { ...base, title: record.title, notes: record.notes || '' };
       if (collection === 'tasks') {
         if (!validDate(record.date) || typeof record.done !== 'boolean' || typeof record.hot !== 'boolean' || !string(record.goalId || '', 100) || !string(record.parentTaskId || '', 100)) throw new Error('Неверный формат задачи.');
-        return { ...text, date: record.date, done: record.done, hot: record.hot, goalId: record.goalId || '', parentTaskId: record.parentTaskId || '' };
+        return { ...text, date: record.date, done: record.done, hot: record.hot, goalId: record.goalId || '', parentTaskId: record.parentTaskId || '', effort: [3, 10, 25].includes(record.effort) ? record.effort : 10, gameGroupId: string(record.gameGroupId || '', 100) ? (record.gameGroupId || '') : '' };
       }
       if (collection === 'goals') {
         if (!LEVELS.includes(record.level) || !string(record.period, 100) || !string(record.parentId || '', 100) || !Number.isFinite(record.progress) || record.progress < 0 || record.progress > 100) throw new Error('Неверный формат цели.');
