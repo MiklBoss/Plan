@@ -1,6 +1,6 @@
-export const COLLECTIONS = ['tasks', 'goals', 'ideas', 'days', 'rewards', 'ledger', 'gameSettings'];
+export const COLLECTIONS = ['tasks', 'goals', 'ideas', 'days', 'awards', 'wishes', 'purchases'];
 export const LEVELS = ['strategy', 'quarter', 'month', 'week', 'project'];
-export function emptyState() { return { version: 1, tasks: [], goals: [], ideas: [], days: [], rewards: [], ledger: [], gameSettings: [] }; }
+export function emptyState() { return { version: 2, tasks: [], goals: [], ideas: [], days: [], awards: [], wishes: [], purchases: [] }; }
 export function dateKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
@@ -64,48 +64,46 @@ export function periodOverlaps(value, start, end) {
   return !!period && period.start <= end && period.end >= start;
 }
 export function validateState(input) {
-  if (!input || input.version !== 1) throw new Error('Это не резервная копия Опоры поддерживаемой версии.');
+  if (!input || ![1, 2].includes(input.version)) throw new Error('Это не резервная копия Опоры поддерживаемой версии.');
   const result = emptyState();
   const string = (v, limit) => typeof v === 'string' && v.length <= limit;
   for (const collection of COLLECTIONS) {
-    if (['rewards', 'ledger', 'gameSettings'].includes(collection) && input[collection] === undefined) continue;
-    if (!Array.isArray(input[collection]) || input[collection].length > 10000) throw new Error('Неверный формат или слишком много записей.');
+    const records = input[collection] ?? (input.version === 1 && ['awards', 'wishes', 'purchases'].includes(collection) ? [] : undefined);
+    if (!Array.isArray(records) || records.length > 10000) throw new Error('Неверный формат или слишком много записей.');
     const ids = new Set();
-    result[collection] = input[collection].map(record => {
-      if (!record || !string(record.id, 100) || !/^[a-zA-Z0-9_.:-]+$/.test(record.id) || ids.has(record.id) || !string(record.updatedAt, 40) || !Number.isFinite(Date.parse(record.updatedAt))) throw new Error('В копии есть повреждённые записи.');
+    result[collection] = records.map(record => {
+      if (!record || !string(record.id, collection === 'awards' ? 110 : 100) || !/^[a-zA-Z0-9_.:-]+$/.test(record.id) || ids.has(record.id) || !string(record.updatedAt, 40) || !Number.isFinite(Date.parse(record.updatedAt))) throw new Error('В копии есть повреждённые записи.');
       ids.add(record.id);
       const base = { id: record.id, updatedAt: record.updatedAt, deleted: record.deleted === true };
       if (base.deleted) return base;
-      if (collection === 'gameSettings') {
-        if (!Number.isSafeInteger(record.budgetCents) || record.budgetCents < 0 || record.budgetCents > 100000000) throw new Error('Неверный бюджет наград.');
-        return { ...base, budgetCents: record.budgetCents };
-      }
-      if (collection === 'rewards') {
-        if (!string(record.title, 500) || !record.title.trim() || !Number.isSafeInteger(record.cost) || record.cost < 1 || record.cost > 1000000 || !Number.isSafeInteger(record.euroCents) || record.euroCents < 0 || record.euroCents > 100000000) throw new Error('Неверный формат награды.');
-        return { ...base, title: record.title, cost: record.cost, euroCents: record.euroCents };
-      }
-      if (collection === 'ledger') {
-        if (!['earn', 'buy'].includes(record.kind) || !string(record.title, 500) || !record.title.trim() || !validDate(record.date) || !Number.isSafeInteger(record.coins) || record.coins < 1 || record.coins > 1000000) throw new Error('Неверный журнал монет.');
-        if (record.kind === 'earn') {
-          if (!string(record.groupId, 100) || !record.groupId || !Number.isSafeInteger(record.cap) || record.cap < 1 || record.cap > 1000000) throw new Error('Неверная награда за задачу.');
-          return { ...base, kind: 'earn', title: record.title, date: record.date, coins: record.coins, groupId: record.groupId, cap: record.cap };
-        }
-        if (!Number.isSafeInteger(record.euroCents) || record.euroCents < 0 || record.euroCents > 100000000) throw new Error('Неверная покупка.');
-        return { ...base, kind: 'buy', title: record.title, date: record.date, coins: record.coins, euroCents: record.euroCents };
-      }
       if (collection === 'days') {
         if (!validDate(record.id) || !string(record.focus, 500) || !string(record.review, 5000) || (record.closed !== undefined && typeof record.closed !== 'boolean')) throw new Error('Неверный формат плана дня.');
         return { ...base, focus: record.focus, review: record.review, closed: record.closed === true };
       }
       if (!string(record.title, 500) || !record.title.trim() || !string(record.notes || '', 5000)) throw new Error('Неверный формат текста записи.');
       const text = { ...base, title: record.title, notes: record.notes || '' };
+      if (collection === 'awards') {
+        if (!['tasks', 'goals'].includes(record.sourceType) || !string(record.sourceId, 100) || record.id !== `${record.sourceType}.${record.sourceId}` || !/^[a-zA-Z0-9_.:-]+$/.test(record.sourceId) || typeof record.earned !== 'boolean' || !['xp', 'coins', 'gold'].every(k => Number.isSafeInteger(record[k]) && record[k] >= 0 && record[k] <= 1000)) throw new Error('Неверный формат игровой награды.');
+        return { ...text, sourceType: record.sourceType, sourceId: record.sourceId, earned: record.earned, xp: record.xp, coins: record.coins, gold: record.gold };
+      }
+      if (collection === 'wishes' || collection === 'purchases') {
+        if (!['coins', 'gold'].includes(record.currency) || !Number.isSafeInteger(record.cost) || record.cost < 1 || record.cost > 1000000) throw new Error('Укажите валюту и целую цену от 1 до 1000000.');
+        if (collection === 'wishes') {
+          if (typeof record.repeatable !== 'boolean') throw new Error('Неверный формат желания.');
+          return { ...text, currency: record.currency, cost: record.cost, repeatable: record.repeatable };
+        }
+        if (!string(record.wishId, 100) || !/^[a-zA-Z0-9_.:-]+$/.test(record.wishId) || typeof record.fulfilled !== 'boolean') throw new Error('Неверный формат покупки.');
+        return { ...text, currency: record.currency, cost: record.cost, wishId: record.wishId, fulfilled: record.fulfilled };
+      }
+      if (['tasks', 'goals'].includes(collection) && ((record.profitable !== undefined && typeof record.profitable !== 'boolean') || (record.effort !== undefined && ![1, 3, 5].includes(record.effort)))) throw new Error('Неверный формат награды за дело.');
+      const game = { ...(record.profitable === undefined ? {} : { profitable: record.profitable }), ...(record.effort === undefined ? {} : { effort: record.effort }) };
       if (collection === 'tasks') {
         if (!validDate(record.date) || typeof record.done !== 'boolean' || typeof record.hot !== 'boolean' || !string(record.goalId || '', 100) || !string(record.parentTaskId || '', 100)) throw new Error('Неверный формат задачи.');
-        return { ...text, date: record.date, done: record.done, hot: record.hot, goalId: record.goalId || '', parentTaskId: record.parentTaskId || '', effort: [3, 10, 25].includes(record.effort) ? record.effort : 10, gameGroupId: string(record.gameGroupId || '', 100) ? (record.gameGroupId || '') : '' };
+        return { ...text, ...game, date: record.date, done: record.done, hot: record.hot, goalId: record.goalId || '', parentTaskId: record.parentTaskId || '' };
       }
       if (collection === 'goals') {
         if (!LEVELS.includes(record.level) || !string(record.period, 100) || !string(record.parentId || '', 100) || !Number.isFinite(record.progress) || record.progress < 0 || record.progress > 100) throw new Error('Неверный формат цели.');
-        return { ...text, level: record.level, period: record.period, parentId: record.parentId || '', progress: record.progress };
+        return { ...text, ...game, level: record.level, period: record.period, parentId: record.parentId || '', progress: record.progress };
       }
       if (!['inbox', 'later', 'archived'].includes(record.status)) throw new Error('Неверный формат мысли.');
       return { ...text, status: record.status };

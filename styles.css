@@ -284,12 +284,92 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
   .main{margin-bottom:calc(132px + env(safe-area-inset-bottom))}
   #toast{bottom:calc(150px + env(safe-area-inset-bottom))}
 }
-
-/* Qwest: compact progress and a personal reward shop. */
-.quest-strip{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 22px;margin-bottom:24px;border:1px solid #bdcdb1;border-radius:18px;background:linear-gradient(120deg,#f3f6e9,#e7efdf)}
-.quest-strip strong{display:block;font-size:25px;margin-top:6px;color:#314d40}.quest-strip strong small,.quest-strip strong span{font-size:14px;font-weight:500}.quest-strip strong span{margin-left:12px}.quest-strip p{font-size:13px;margin:6px 0 0;color:#586650}
-.quest-character{display:flex;align-items:center;gap:24px;padding:28px;margin-bottom:20px;background:#314d40;color:#fff;border-radius:22px}.quest-character .small-label{color:#d6e4c9}.quest-character h2{margin:7px 0}.quest-character p{color:#dde8d6;margin:0 0 10px}.quest-character>div:nth-child(2){flex:1;min-width:0}.quest-avatar{font-size:48px}.quest-wallet{display:flex;flex-direction:column;gap:8px}.quest-wallet strong{font-size:30px}.quest-wallet small{font-size:12px;color:#d6e4c9}
-.quest-character progress,.quest-reward progress{display:block;width:100%;height:10px;accent-color:#b6d38a;border:0;border-radius:10px;overflow:hidden}.quest-reward progress{accent-color:#557647}.quest-budget{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:22px;margin-bottom:28px}.quest-budget h2{font-size:18px}.quest-budget p{margin:8px 0}.quest-budget small{color:#596953}
-.quest-rewards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:18px 0 24px}.quest-reward{padding:24px}.quest-reward h3{font-size:22px;overflow-wrap:anywhere;margin:12px 0}.quest-reward .button-row{flex-wrap:wrap}.quest-rules,.quest-history{padding:22px;margin-bottom:20px}.quest-rules summary{cursor:pointer;font-weight:600}.quest-rules p{line-height:1.6}.quest-history-row{display:flex;align-items:center;gap:14px;border-top:1px solid #dde3d6;padding:14px 0}.quest-history-row>div{flex:1;min-width:0}.quest-history-row strong{overflow-wrap:anywhere}.quest-history-row small{display:block;color:#68755d;font-size:12px;margin-top:4px}.quest-history-row>span{white-space:nowrap}.quest-history-row>.text-button{flex-shrink:0}
-@media(max-width:650px){.quest-strip{padding:15px;gap:10px;align-items:flex-start;flex-wrap:wrap}.quest-strip strong{font-size:23px}.quest-character{padding:20px;gap:12px;flex-wrap:wrap}.quest-avatar{font-size:34px}.quest-character>div:nth-child(2){flex-basis:70%}.quest-wallet{width:100%;border-top:1px solid #71856a;padding-top:14px}.quest-rewards{grid-template-columns:1fr}.quest-budget{align-items:flex-start;flex-direction:column;padding:18px}.quest-history-row{flex-wrap:wrap}.quest-history-row>div{flex-basis:65%}.quest-reward .btn{white-space:normal}}
-.quest-battle{display:flex;gap:18px;padding:20px;margin:-8px 0 24px;border:1px solid #d7d6c4;border-radius:18px;background:#faf8ef}.quest-battle.is-defeated{background:#edf4e7;border-color:#b2c99c}.quest-enemy{font-size:38px}.quest-battle>div:last-child{flex:1;min-width:0}.quest-battle h2{margin:6px 0;font-size:19px}.quest-battle p{margin:6px 0;font-size:14px}.quest-battle small{display:block;margin-top:8px;color:#65715b;font-size:12px}.quest-battle progress{width:100%;height:8px;accent-color:#8c9658}@media(max-width:650px){.quest-battle{padding:15px;gap:10px}.quest-enemy{font-size:28px}}
+.hero-card{background:linear-gradient(135deg,#f7f0d8,#edf3e6);border:1px solid #b9ac77;border-radius:12px;padding:20px;margin-bottom:24px}
+.hero-heading{display:flex;align-items:center;gap:12px;margin-bottom:15px}
+.hero-emblem{width:46px;height:46px;background:#314d40;color:#f9e7a5;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.hero-emblem .icon{width:28px;height:28px}
+.hero-heading>div:nth-child(2){flex:1;min-width:0}
+.hero-heading .eyebrow{font-size:12px;margin:0 0 5px}
+.hero-heading h2{font-size:18px;line-height:1.5;margin:0;color:#243a2d}
+.hero-heading>.btn{font-size:14px;padding:9px 12px}
+.wallet{display:flex;gap:9px;flex-wrap:wrap}
+.currency{display:inline-flex;align-items:center;gap:5px;padding:6px 9px;border-radius:7px;background:#edf0e7;color:#344d2b;font-size:14px;line-height:1.5}
+.currency.gold{background:#f4e4b7;color:#67480b}
+.currency.xp{background:#dfece1;color:#254731}
+.xp-caption{display:flex;justify-content:space-between;gap:12px;font-size:14px;color:#4c5f43;margin:16px 0 8px}
+.xp-progress{display:block;appearance:none;border:0;width:100%;height:8px;border-radius:6px;overflow:hidden;background:#d8dfc9}
+.xp-progress::-webkit-progress-bar{background:#d8dfc9;border-radius:6px}
+.xp-progress::-webkit-progress-value{background:#567747;border-radius:6px}
+.xp-progress::-moz-progress-bar{background:#567747}
+.daily-quest{font-size:14px;line-height:1.7;color:#344d2b;margin:12px 0 0}
+.game-fields .checkbox-label{line-height:1.6;align-items:flex-start}
+.reward-preview{font-size:14px;color:#344d2b;line-height:1.7;margin:12px 0 0}
+.shop-summary{padding:18px;background:#f0f5e9;border:1px solid #a8ba98;border-radius:10px;margin:0 0 22px}
+.shop-summary h3{margin:0 0 14px;font-size:20px;color:#243a2d}
+.shop-summary p:last-child{margin-bottom:0}
+.wish-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.wish-card{display:flex;flex-direction:column;border:1px solid #b6c3ad;background:#fff;padding:18px;border-radius:10px;min-width:0;gap:12px}
+.wish-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.wish-card h3{font-size:18px;line-height:1.6;color:#243a2d;margin:0;overflow-wrap:anywhere}
+.wish-card p{font-size:15px;color:#4c5f43;line-height:1.7;margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.wish-card small{font-size:14px;color:#4c5f43;line-height:1.7}
+.wish-card>.btn{margin-top:auto;white-space:normal}
+.wish-card button:disabled{cursor:default;opacity:.7}
+.game-rules{margin-top:24px;padding:14px 16px;border:1px solid #b6c3ad;border-radius:9px}
+.game-rules summary{font-size:16px;color:#243a2d;cursor:pointer;line-height:1.6}
+.game-rules p{font-size:15px;line-height:1.8;color:#4c5f43}
+.purchase-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid #b6c3ad}
+.purchase-row>div:first-child{flex:1;min-width:0;overflow-wrap:anywhere}
+.purchase-row strong{font-size:16px;line-height:1.6}
+.purchase-row small{display:block;font-size:14px;line-height:1.7;color:#4c5f43;margin-top:5px}
+.purchase-row>div:last-child{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}
+.award-row{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.award-row span{overflow-wrap:anywhere;flex:1;min-width:120px}
+.award-row b{font-size:14px}
+.balance-note{color:#963f26;font-size:15px;line-height:1.8}
+@media(max-width:650px){.breadcrumb{display:none}.topbar-right{width:100%;justify-content:flex-end}.topbar-right>.icon-button{min-width:40px;min-height:40px}.hero-card{padding:16px}.hero-heading{flex-wrap:wrap}.hero-heading h2{font-size:16px}.hero-heading>.btn{margin-left:auto}.hero-emblem{width:38px;height:38px}.hero-heading .eyebrow{font-size:11px}.wallet{gap:7px}.currency{font-size:14px}.xp-caption{flex-wrap:wrap}.wish-grid{grid-template-columns:1fr}.detail-heading{flex-wrap:wrap;gap:12px}.purchase-row{flex-wrap:wrap}.purchase-row>div:first-child{flex-basis:100%}}
+html[data-theme="dark"]{color-scheme:dark;background:#101c1d;color:#e5f0e8;--green:#a1cfaa;--muted:#b8cab9;--border:#455c52;--paper:#1b2c2b;--orange:#ffc296}
+html[data-theme="dark"] :is(.sidebar,.topbar,.page-footer){background:#172725;border-color:#455c52}
+html[data-theme="dark"] :is(.nav-item,.brand,.brand-caption,.nav-label,.nav-item small,.sidebar-note,.sidebar-note strong,.sidebar-note p,.settings-nav,.local-status,.breadcrumb,.saved-status,.page-footer,.keyboard-hint,.text-button,.icon-button){color:#c8dfce}
+html[data-theme="dark"] .nav-item.active{background:#2e493a;color:#edf7ed;box-shadow:inset 3px 0 #aed39b}
+html[data-theme="dark"] :is(.nav-item:hover,.icon-button:hover){background:#2d4238}
+html[data-theme="dark"] :is(h1,h2,h3,.date-display strong,.week-day,.task-text,.timer-time,.progress-ring strong,.large-empty h2,.idea-content h3,.focus-screen-content h1,.dialog-heading h2,.field,.checkbox-label,.goal-card h2,.goal-progress-label,.focus-enter){color:#e5f0e8}
+html[data-theme="dark"] :is(.page-heading p,.eyebrow,.date-display span,.date-display small,.week-day span,.muted,.section-caption,.small-label,.focus-bottom span,.task-text small,.review-card label,.card p,.card small,.goal-notes,.goal-card-footer span,.idea-content p,.idea-content small,.soft-note,.optional,.dialog-intro,.settings-section p,.settings-help,.settings-steps,.detail-task>small,.linked-goal small,.escape-hint,.period-current,.period-form-preview,.period-option span,.period-option small,.period-year,.hero-heading .eyebrow,.xp-caption,.daily-quest,.reward-preview,.game-rules p,.wish-card p,.wish-card small,.purchase-row small,.day-closure p){color:#b8cab9}
+html[data-theme="dark"] :is(.card,.goal-card,.task-list,.task-row,.task-row.subtask,.hot-list>.task-wrapper>.task-row,.large-empty,.idea-card,.wish-card,.period-option,.settings-section,.linked-goal,.shop-summary,.game-rules,.day-closure,.dated-plans,.goal-calendar){background:#1b2c2b;border-color:#455c52}
+html[data-theme="dark"] :is(.focus-card,.capture-card,.idea-capture,.period-selector,.overdue-section){background:#22372e;border-color:#4f6753}
+html[data-theme="dark"] :is(.focus-card textarea,.focus-screen-content h1){color:#eaf4e4}
+html[data-theme="dark"] :is(input:not([type="range"]):not([type="checkbox"]),textarea,select){background:#13221f;color:#e5f0e8;border-color:#68856c}
+html[data-theme="dark"] :is(input,textarea)::placeholder{color:#a7bea9;opacity:1}
+html[data-theme="dark"] .focus-card textarea{background:transparent;border:0}
+html[data-theme="dark"] :is(.btn-light,.focus-tag,.number-badge,.period-tag,.idea-bullet,.nav-count,.currency.coins){background:#2e4438;color:#e3f0df;border-color:#63816b}
+html[data-theme="dark"] .btn-primary{background:#88bb8e;color:#102317}
+html[data-theme="dark"] .btn-primary:hover{background:#a6cfa8}
+html[data-theme="dark"] .btn-danger{background:#a94239;color:#fff}
+html[data-theme="dark"] :is(.task-check.checked,.week-day.selected,.period-option.selected){background:#36513a;border-color:#8eb183;color:#eaf5e3}
+html[data-theme="dark"] .task-check{border-color:#91b48e}
+html[data-theme="dark"] .task-row.done .task-text>span{color:#b3c6b6}
+html[data-theme="dark"] :is(.empty-inline,.quick-add){background:#172724;color:#b8cab9;border-color:#59725c}
+html[data-theme="dark"] .quick-add input{background:transparent}
+html[data-theme="dark"] :is(.parent-link,.tab,.period-option strong,.period-year,.goal-calendar legend,.game-rules summary,.wish-card h3,.hero-heading h2,.shop-summary h3){color:#d6ead5}
+html[data-theme="dark"] .tab.active{color:#e9f6e6;border-bottom-color:#b0d49d}
+html[data-theme="dark"] dialog{background:#172724;color:#e5f0e8;border-color:#607b65}
+html[data-theme="dark"] dialog::backdrop{background:#050c0caa}
+html[data-theme="dark"] :is(.warning,.balance-note){background:#3d3023;color:#ffe0a2;border-color:#917451}
+html[data-theme="dark"] :is(.danger,.task-actions .is-hot){color:#ffc296}
+html[data-theme="dark"] .hero-card{background:linear-gradient(135deg,#323524,#213c31);border-color:#6f7952}
+html[data-theme="dark"] .hero-emblem{background:#395637;color:#ffe3a1}
+html[data-theme="dark"] .currency.gold{background:#4b3d20;color:#ffe0a2}
+html[data-theme="dark"] .currency.xp{background:#294736;color:#c1eac8}
+html[data-theme="dark"] .xp-progress,html[data-theme="dark"] .xp-progress::-webkit-progress-bar{background:#14241d}
+html[data-theme="dark"] .xp-progress::-webkit-progress-value{background:#a7cc8b}
+html[data-theme="dark"] .xp-progress::-moz-progress-bar{background:#a7cc8b}
+html[data-theme="dark"] .progress-ring>div{background:#1b2c2b}
+html[data-theme="dark"] :is(.progress-ring small,.progress-ring strong>span,.card h3,.card .section-heading>.icon,.capture-illustration){color:#c8dfce}
+html[data-theme="dark"] :is(.review-card,.day-navigation,.task-wrapper+.task-wrapper,.dialog-footer,.detail-heading,.goal-card-footer,.purchase-row){border-color:#455c52}
+html[data-theme="dark"] .demo-banner{background:#3a3420;color:#ffe0a2;border-color:#917451}
+html[data-theme="dark"] #toast{background:#d4e7cc;color:#132a1b}
+html[data-theme="dark"] :is(button,a,input,textarea,select,summary):focus-visible{outline-color:#b1d59e}
+@media(max-width:650px){html[data-theme="dark"] .sidebar .nav-item.active{box-shadow:inset 0 3px #b0d49d}html[data-theme="dark"] .sidebar .nav-count{background:#466139;color:#fff1bb;border-color:#a1bb80}}
+html[data-theme="dark"] :is(.heading-dot,.brand-period,.breadcrumb>span,.dated-plans summary,.dated-plans summary>span,.goal-progress-label b,.idea-capture>label,.idea-capture>div>span,.large-empty p,.detail-notes,.overdue-row small,.completed-section summary,.overdue-section summary,.horizon-path span,.welcome strong,.welcome small){color:#b8cab9}
+html[data-theme="dark"] :is(.tab>span,.horizon-path,.welcome){background:#293e34;color:#c8dfce;border-color:#455c52}
+html[data-theme="dark"] .focus-screen{background:#101c1d}

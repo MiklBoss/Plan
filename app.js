@@ -1,5 +1,5 @@
-import { EFFORTS, gameTotals, earningFor, canBuy, effectiveEarnings, dayBattle } from './game.js';
-import { emptyState, dateKey, shiftDate, validDate, validateState, mergeStates, active, encodeState, decodeState, LEVELS, planningPeriod, parsePlanningPeriod, planningPeriodRange, calendarPeriod, parseCalendarPeriod, calendarPeriodLabel, periodOverlaps } from './core.js';
+import { emptyState, dateKey, shiftDate, validDate, validateState, mergeStates, active, encodeState, decodeState, LEVELS, planningPeriod, parsePlanningPeriod, planningPeriodRange, calendarPeriod, parseCalendarPeriod, calendarPeriodLabel, periodOverlaps, COLLECTIONS } from './core.js';
+import { updateAward, gameTotals, rewardFor, purchaseWish, earnedAwards } from './game.js';
 
 const KEY = 'opora.data.v1', CONFIG = 'opora.github.v1', TIMER = 'opora.timer.v1';
 const app = document.querySelector('#app'), dialog = document.querySelector('#dialog');
@@ -20,12 +20,13 @@ const icons = {
   play: '<path d="m9 5 11 7-11 7V5Z"/>', pause: '<path d="M8 5v14M16 5v14"/>', reset: '<path d="M3 10a9 9 0 1 1 2 8M3 4v6h6"/>',
   edit: '<path d="m15 4 5 5M4 20l4-1L20 7a3 3 0 0 0-4-4L4 15v5Z"/>', trash: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>',
   moon: '<path d="M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11Z"/>', book: '<path d="M12 5C8 2 3 4 3 4v15s5-2 9 1c4-3 9-1 9-1V4s-5-2-9 1Zm0 0v15"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1 1m12 12 1 1M5 19l1-1M18 6l1-1"/>',
   download: '<path d="M12 3v12m-5-5 5 5 5-5M4 17v4h16v-4"/>', upload: '<path d="M12 16V4m-5 5 5-5 5 5M4 17v4h16v-4"/>',
   dot: '<circle cx="12" cy="12" r="3"/>', spark: '<path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7Z"/>'
 };
 const icon = (name, cls = '') => `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.dot}</svg>`;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const labels = { strategy: 'Стратегия', quarter: 'Полугодие · квартал', month: 'Месяц', week: 'Неделя', project: 'Проекты', game: 'Моя игра' };
+const labels = { strategy: 'Стратегия', quarter: 'Полугодие · квартал', month: 'Месяц', week: 'Неделя', project: 'Проекты' };
 const captions = { strategy: '1–10 лет', quarter: 'Большие шаги', month: 'Ближайшие планы', week: 'Следующие шаги', project: 'От замысла к действию' };
 let state = emptyState(), storageFailed = false;
 try { const saved = localStorage.getItem(KEY); if (saved) state = validateState(JSON.parse(saved)); }
@@ -38,7 +39,7 @@ const planView = { month: dateKey().slice(0, 7), week: dateKey(), scope: 'period
 let timer = { remaining: 25 * 60, end: null, sessions: 0 };
 try { timer = { ...timer, ...JSON.parse(sessionStorage.getItem(TIMER) || '{}') }; } catch { /* Reset invalid timer. */ }
 if (!Number.isFinite(timer.remaining) || timer.remaining < 0 || (timer.end !== null && !Number.isFinite(timer.end))) timer = { remaining: 1500, end: null, sessions: 0 };
-const stamp = () => { lastStamp = Math.max(Date.now(), lastStamp + 1, ...Object.keys(state).filter(key => Array.isArray(state[key])).map(key => Math.max(0, ...state[key].map(r => Date.parse(r.updatedAt))))); return new Date(lastStamp).toISOString(); };
+const stamp = () => { lastStamp = Math.max(Date.now(), lastStamp + 1, ...COLLECTIONS.map(key => Math.max(0, ...state[key].map(r => Date.parse(r.updatedAt))))); return new Date(lastStamp).toISOString(); };
 const uid = () => crypto.randomUUID();
 const visible = key => active(state[key]);
 const goal = id => visible('goals').find(g => g.id === id);
@@ -54,15 +55,18 @@ function updateSaved() {
   const status = document.querySelector('#saved-status');
   if (status) status.innerHTML = `${icon(storageFailed ? 'close' : 'check')} ${storageFailed ? 'Есть несохранённые данные' : 'Сохранено на устройстве'}`;
 }
-function put(collection, record) {
+function put(collection, record, { game = true } = {}) {
   const value = { ...record, updatedAt: stamp(), deleted: false };
   const index = state[collection].findIndex(r => r.id === value.id);
+  const previous = state[collection][index];
   if (index === -1) state[collection].push(value); else state[collection][index] = value;
+  if (game) updateAward(state, collection, value, previous);
   save(); return value;
 }
 function remove(collection, id) {
   const record = state[collection].find(r => r.id === id);
   if (!record) return;
+  updateAward(state, collection, { ...record, updatedAt: stamp() }, record);
   state[collection] = state[collection].map(r => r.id === id ? { id, deleted: true, updatedAt: stamp() } : r);
   if (collection === 'tasks') visible('tasks').filter(t => t.parentTaskId === id).forEach(t => put('tasks', { ...t, parentTaskId: '' }));
   if (collection === 'goals') {
@@ -92,8 +96,8 @@ function sidebar() {
 function render() {
   document.body.classList.toggle('focus-mode', focusMode);
   if (focusMode) { renderFocus(); return; }
-  app.innerHTML = `${sidebar()}<main class="main"><header class="topbar"><span class="breadcrumb">Моё пространство <span>/</span> ${page === 'day' ? 'Сегодня' : page === 'inbox' ? 'Выгрузка мыслей' : page === 'plans' ? 'Месяц · неделя' : labels[page]}</span><div class="topbar-right"><span id="saved-status" class="saved-status"></span>${button('sync-settings', 'Синхронизация', 'cloud', 'btn btn-small btn-light', 'aria-label="Синхронизация между устройствами"')}${button('game-open', 'Моя игра', 'spark', 'btn btn-small btn-light')}${button('capture', 'Записать мысль', 'plus', 'btn btn-small btn-light')}${button('settings', '', 'settings', 'icon-button mobile-settings', 'aria-label="Настройки"')}</div></header>
-    <div class="content">${storageFailed ? '<div class="warning">Не удалось прочитать или сохранить данные. Скачайте копию в настройках. Исходные данные в браузере не перезаписываются.</div>' : ''}${localStorage.getItem('opora.example') ? `<div class="demo-banner"><span>${icon('book')} Это пример. Отредактируйте планы или начните со своих.</span>${button('clear-example', 'Убрать пример', '', 'text-button')}</div>` : ''}${page === 'day' ? renderDay() : page === 'game' ? renderGame() : page === 'inbox' ? renderIdeas() : renderGoals(page === 'plans' ? planLevel : page)}</div><footer class="page-footer"><span>Меньше шума. Больше смысла.</span><span>Опора <span class="footer-dot">·</span> шаг за шагом</span></footer></main>`;
+  app.innerHTML = `${sidebar()}<main class="main"><header class="topbar"><span class="breadcrumb">Моё пространство <span>/</span> ${page === 'day' ? 'Сегодня' : page === 'inbox' ? 'Выгрузка мыслей' : page === 'plans' ? 'Месяц · неделя' : labels[page]}</span><div class="topbar-right"><span id="saved-status" class="saved-status"></span>${button('game-shop', '', 'spark', 'icon-button', 'aria-label="Герой и магазин радостей" title="Герой и магазин"')}${button('toggle-theme', '', document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon', 'icon-button', `aria-label="${document.documentElement.dataset.theme === 'dark' ? 'Включить светлую тему' : 'Включить тёмную тему'}" title="Переключить тему"`)}${button('sync-settings', 'Синхронизация', 'cloud', 'btn btn-small btn-light', 'aria-label="Синхронизация между устройствами"')}${button('capture', 'Записать мысль', 'plus', 'btn btn-small btn-light')}${button('settings', '', 'settings', 'icon-button mobile-settings', 'aria-label="Настройки"')}</div></header>
+    <div class="content">${storageFailed ? '<div class="warning">Не удалось прочитать или сохранить данные. Скачайте копию в настройках. Исходные данные в браузере не перезаписываются.</div>' : ''}${localStorage.getItem('opora.example') ? `<div class="demo-banner"><span>${icon('book')} Это пример. Отредактируйте планы или начните со своих.</span>${button('clear-example', 'Убрать пример', '', 'text-button')}</div>` : ''}${page === 'day' ? renderDay() : page === 'inbox' ? renderIdeas() : renderGoals(page === 'plans' ? planLevel : page)}</div><footer class="page-footer"><span>Меньше шума. Больше смысла.</span><span>Опора <span class="footer-dot">·</span> шаг за шагом</span></footer></main>`;
   updateSaved(); updateTimer();
 }
 function renderDay() {
@@ -102,13 +106,13 @@ function renderDay() {
   const hot = shown.filter(isHot), ordinary = shown.filter(t => !isHot(t));
   const done = tasks.filter(t => t.done && !tasks.some(p => p.id === t.parentTaskId && p.done));
   const weekday = new Date(selectedDate + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'long' });
-  return `${gameCard()}${battleCard()}<section class="page-heading"><div><div class="eyebrow">${selectedDate === today ? 'СЕГОДНЯ — ХОРОШИЙ ДЕНЬ ДЛЯ ВАЖНОГО' : 'У КАЖДОГО ДНЯ СВОЙ РИТМ'}</div><h1>${selectedDate === today ? 'Начнём с главного' : 'План на ' + dateLabel(selectedDate)}<span class="heading-dot">.</span></h1><p>Не весь список жизни. Только то, что имеет значение сегодня.</p></div><div class="date-display"><span>${weekday}</span><strong>${dateLabel(selectedDate)}</strong><small>${new Date(selectedDate + 'T12:00:00').getFullYear()}</small></div></section>
+  return `<section class="page-heading"><div><div class="eyebrow">${selectedDate === today ? 'СЕГОДНЯ — ХОРОШИЙ ДЕНЬ ДЛЯ ВАЖНОГО' : 'У КАЖДОГО ДНЯ СВОЙ РИТМ'}</div><h1>${selectedDate === today ? 'Начнём с главного' : 'План на ' + dateLabel(selectedDate)}<span class="heading-dot">.</span></h1><p>Не весь список жизни. Только то, что имеет значение сегодня.</p></div><div class="date-display"><span>${weekday}</span><strong>${dateLabel(selectedDate)}</strong><small>${new Date(selectedDate + 'T12:00:00').getFullYear()}</small></div></section>
     <div class="day-navigation"><div class="week-strip">${Array.from({ length: 7 }, (_, i) => {
       const d = new Date(selectedDate + 'T12:00:00'), monday = shiftDate(selectedDate, -((d.getDay() + 6) % 7)), key = shiftDate(monday, i);
       const num = visible('tasks').filter(t => t.date === key && !t.done).length;
       return `<button data-action="date" data-date="${key}" class="week-day ${key === selectedDate ? 'selected' : ''} ${key === today ? 'is-today' : ''}" aria-label="${dateLabel(key)}"><span>${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][i]}</span><b>${Number(key.slice(-2))}</b><i class="${num ? 'has-tasks' : ''}"></i></button>`;
     }).join('')}</div><div class="date-controls">${button('previous-day', '', 'back', 'icon-button', 'aria-label="Предыдущий день"')}${button('today', 'Сегодня', '', 'btn btn-small btn-light')}${button('next-day', '', 'chevron', 'icon-button', 'aria-label="Следующий день"')}<label class="date-picker" title="Выбрать дату">${icon('day')}<input type="date" id="date-picker" value="${selectedDate}" aria-label="Выбрать дату"></label></div></div>
-    <div class="day-grid"><div class="day-main"><section class="focus-card"><div class="focus-top"><span class="small-label">${icon('focus')} ФОКУС ДНЯ</span><span class="focus-tag">Одно самое важное</span></div><label class="sr-only" for="day-focus">Фокус дня</label><textarea id="day-focus" rows="2" maxlength="500" placeholder="Что сделает этот день не напрасным?">${esc(record.focus)}</textarea><div class="focus-bottom"><span>${icon('leaf')} Выберите результат, а не список дел</span>${button('focus-mode', 'Сосредоточиться', 'arrow', 'focus-enter')}</div><svg class="focus-decoration" viewBox="0 0 180 180" aria-hidden="true"><g fill="none" stroke="currentColor"><circle cx="130" cy="130" r="95"/><circle cx="130" cy="130" r="72"/><circle cx="130" cy="130" r="49"/><path d="M35 130h190M130 35v190"/></g></svg></section>
+    <div class="day-grid"><div class="day-main">${heroCard()}<section class="focus-card"><div class="focus-top"><span class="small-label">${icon('focus')} ФОКУС ДНЯ</span><span class="focus-tag">Одно самое важное</span></div><label class="sr-only" for="day-focus">Фокус дня</label><textarea id="day-focus" rows="2" maxlength="500" placeholder="Что сделает этот день не напрасным?">${esc(record.focus)}</textarea><div class="focus-bottom"><span>${icon('leaf')} Выберите результат, а не список дел</span>${button('focus-mode', 'Сосредоточиться', 'arrow', 'focus-enter')}</div><svg class="focus-decoration" viewBox="0 0 180 180" aria-hidden="true"><g fill="none" stroke="currentColor"><circle cx="130" cy="130" r="95"/><circle cx="130" cy="130" r="72"/><circle cx="130" cy="130" r="49"/><path d="M35 130h190M130 35v190"/></g></svg></section>
     <section class="task-section"><div class="section-heading"><h2>${icon('flame')} Горячие задачи <span class="number-badge">${hot.filter(t => !t.done).length}</span></h2><span class="section-caption">До 3 главных — уже достаточно</span></div>${hot.length ? `<div class="task-list hot-list">${hot.map(t => taskRow(t, { hideCompleted: record.closed })).join('')}</div>` : '<div class="empty-inline">Выберите задачи, которые требуют внимания сегодня.</div>'}</section>
     <section class="task-section"><div class="section-heading"><h2>Остальные задачи <span class="number-badge">${ordinary.filter(t => !t.done).length}</span></h2>${button('new-task', 'Добавить', 'plus', 'text-button')}</div>${ordinary.length ? `<div class="task-list">${ordinary.map(t => taskRow(t, { hideCompleted: record.closed })).join('')}</div>` : '<div class="empty-inline">Здесь может быть пусто. Оставьте место для жизни.</div>'}<form id="quick-task" class="quick-add">${icon('plus')}<input name="title" maxlength="500" placeholder="Небольшой следующий шаг…" aria-label="Новая задача" required autocomplete="off"><button type="submit" class="quick-submit" aria-label="Добавить задачу">${icon('arrow')}</button></form></section>
     ${record.closed && done.length ? `<details class="completed-section"><summary>${icon('check')} Выполненные задачи · архив <span>${completed}</span></summary><div class="task-list">${done.map(taskRow).join('')}</div></details>` : ''}
@@ -193,9 +197,43 @@ function openDialog(title, body, formId = '', submitLabel = 'Сохранить'
 function closeDialog() { dialog.close(); dialogReturnFocus?.isConnected && dialogReturnFocus.focus(); }
 const textField = (name, label, value = '', placeholder = '') => `<label class="field">${label}<input name="${name}" value="${esc(value)}" maxlength="${name === 'title' ? 500 : 100}" ${name === 'title' ? 'required' : ''} placeholder="${esc(placeholder)}"></label>`;
 const notesField = value => `<label class="field">Заметка <span class="optional">необязательно</span><textarea name="notes" rows="3" maxlength="5000" placeholder="Детали, ссылки, критерий результата…">${esc(value || '')}</textarea></label>`;
+function rewardFields(record, type) {
+  const awarded = state.awards.find(a => a.id === `${type}.${record.id}`), r = awarded || rewardFor(type, record);
+  return `<fieldset class="goal-calendar game-fields"><legend>Награда за выполнение</legend><label class="field">Размер шага<select name="effort">${[[1, 'Небольшой · ×1'], [3, 'Обычный · ×3'], [5, 'Большой вызов · ×5']].map(([value, label]) => `<option value="${value}" ${(record.effort || 1) === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label class="checkbox-label"><input type="checkbox" name="profitable" ${record.profitable ? 'checked' : ''}>Дело связано с доходом · золотые монеты</label><p class="reward-preview" data-reward-type="${type}">${awarded ? 'Награда закреплена при первом выполнении: ' : 'За выполнение: '}${r.xp} XP · ${r.gold ? `${r.gold} золотых` : `${r.coins} монет`}</p></fieldset>`;
+}
+function wallet(totals) {
+  return `<div class="wallet"><span class="currency coins">● <b data-balance="coins">${totals.coins}</b> монет</span><span class="currency gold">◆ <b data-balance="gold">${totals.gold}</b> золотых</span><span class="currency xp">✦ <b data-balance="xp">${totals.xp}</b> XP</span></div>`;
+}
+function heroCard() {
+  const totals = gameTotals(state), titles = ['Искатель пути', 'Следопыт', 'Хранитель фокуса', 'Мастер своего дела'];
+  const title = titles[Math.min(3, Math.floor((totals.level - 1) / 5))];
+  const completed = earnedAwards(state).filter(a => a.sourceType === 'tasks' && task(a.sourceId)?.date === selectedDate).length;
+  return `<section class="hero-card" aria-label="Игровой прогресс"><div class="hero-heading"><div class="hero-emblem">${icon('spark')}</div><div><span class="eyebrow">ВАШ ПУТЬ</span><h2>${title} · уровень <span data-level>${totals.level}</span></h2></div>${button('game-shop', 'Магазин', 'project', 'btn btn-light')}</div>${wallet(totals)}<div class="xp-caption"><span>До следующего уровня — ${totals.next} XP</span><b>${totals.progress} / 100</b></div><progress class="xp-progress" value="${totals.progress}" max="100" aria-label="Опыт до следующего уровня"></progress><p class="daily-quest">${completed >= 3 ? '✦ Три шага сделаны. Можно выбрать радость для себя.' : `Квест дня: завершить три шага · ${completed} / 3`}</p></section>`;
+}
+function announceReward(before) {
+  const after = gameTotals(state), xp = after.xp - before.xp;
+  if (xp > 0) toast(`${after.level > before.level ? `Новый уровень ${after.level}! ` : 'Шаг сделан! ' }+${xp} XP${after.coins > before.coins ? ` · +${after.coins - before.coins} монет` : ''}${after.gold > before.gold ? ` · +${after.gold - before.gold} золотых` : ''}`);
+  else if (xp < 0) toast('Отметка снята. XP и монеты пересчитаны.');
+}
+function shopDialog() {
+  const totals = gameTotals(state), wishes = visible('wishes'), purchases = visible('purchases').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const awards = earnedAwards(state).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 8);
+  openDialog('Герой и магазин радостей', `<div class="shop-summary"><h3>Уровень ${totals.level} · ${totals.xp} XP</h3>${wallet(totals)}<p class="muted">Монеты за ваши дела можно обменять на желания и маленькие радости, которые вы выбираете сами.</p>${totals.coins < 0 || totals.gold < 0 ? '<p class="balance-note">Часть наград отменена или покупки сделаны на двух устройствах. Баланс отражает все покупки: отмените ещё не полученную радость или заработайте новые монеты.</p>' : ''}</div><div class="detail-heading"><h3>Банк желаний</h3>${button('new-wish', 'Добавить желание', 'plus', 'btn btn-primary')}</div>${wishes.length ? `<div class="wish-grid">${wishes.map(w => {
+    const purchased = !w.repeatable && purchases.some(p => p.wishId === w.id), canBuy = !purchased && totals[w.currency] >= w.cost;
+    return `<article class="wish-card"><div class="wish-card-top"><span class="currency ${w.currency}">${w.currency === 'gold' ? '◆' : '●'} ${w.cost} ${w.currency === 'gold' ? 'золотых' : 'монет'}</span>${button('edit-wish', '', 'edit', 'icon-button', `data-id="${w.id}" aria-label="Редактировать желание: ${esc(w.title)}"`)}</div><h3>${esc(w.title)}</h3>${w.notes ? `<p>${esc(w.notes)}</p>` : ''}<small>${w.repeatable ? 'Можно радовать себя снова' : 'Большое желание · одна покупка'}</small>${button('buy-wish', purchased ? 'Уже куплено' : canBuy ? 'Купить за монеты' : `Нужно ещё ${Math.max(0, w.cost - totals[w.currency])}`, '', 'btn btn-light', `data-id="${w.id}" ${canBuy ? '' : 'disabled'}`)}</article>`;
+  }).join('')}</div>` : `<div class="empty-inline">Что порадует вас после сделанных дел? Добавьте свои награды или начните с примеров.<div class="button-row">${button('wish-examples', 'Добавить примеры', '', 'btn btn-light')}</div></div>`}<details class="game-rules"><summary>Как зарабатывать XP и монеты</summary><p>Небольшая задача: 10 XP и 1 монета. Цель или проект при 100%: 50 XP и 5 монет. Размер шага умножает награду на 1, 3 или 5. Для дел с доходом начисляются золотые монеты. Награда закрепляется при первом выполнении; снятие отметки убирает её, повторное выполнение возвращает ту же награду. Каждые 100 XP — новый уровень.</p><p>Монеты игровые. Вы сами организуете выбранную радость в жизни и отмечаете, когда получили её. Старые выполненные дела и демонстрационные примеры автоматически монеты не получают.</p></details><div class="detail-heading"><h3>Купленные радости</h3><span>${purchases.length}</span></div>${purchases.length ? purchases.map(p => `<article class="purchase-row"><div><strong>${esc(p.title)}</strong><small>${p.cost} ${p.currency === 'gold' ? 'золотых' : 'монет'} · ${p.fulfilled ? 'Радость получена' : 'Можно получить'}</small></div>${p.fulfilled ? icon('check') : `<div>${button('claim-purchase', 'Получено', 'check', 'text-button', `data-id="${p.id}"`)}${button('refund-purchase', 'Отменить покупку', '', 'text-button', `data-id="${p.id}"`)}</div>`}</article>`).join('') : '<p class="muted">Здесь появятся купленные желания.</p>'}<details class="game-rules"><summary>Заслуженные награды</summary>${awards.length ? awards.map(a => `<p class="award-row"><span>${esc(a.title)}</span><b>+${a.xp} XP · ${a.gold ? `${a.gold} золотых` : `${a.coins} монет`}</b></p>`).join('') : '<p>Следующий выполненный шаг принесёт первую награду.</p>'}</details>`);
+}
+function wishDialog(record = {}) {
+  openDialog(record.id ? 'Редактировать желание' : 'Новое желание', `<input type="hidden" name="id" value="${record.id || ''}">${textField('title', 'Что порадует вас?', record.title, 'Например: прогулка, десерт, новая книга')}<div class="form-columns"><label class="field">Цена в игровых монетах<input name="cost" type="number" min="1" max="1000000" step="1" value="${record.cost || 5}" required></label><label class="field">Валюта<select name="currency"><option value="coins" ${record.currency !== 'gold' ? 'selected' : ''}>Обычные монеты</option><option value="gold" ${record.currency === 'gold' ? 'selected' : ''}>Золотые монеты</option></select></label></div>${notesField(record.notes)}<label class="checkbox-label"><input name="repeatable" type="checkbox" ${record.repeatable !== false ? 'checked' : ''}>Можно покупать повторно</label>`, 'wish-form', 'Сохранить желание', record.id ? button('delete', 'Удалить', 'trash', 'text-button danger', `data-id="${record.id}" data-collection="wishes"`) : '');
+}
+function buyWishDialog(id) {
+  const wish = visible('wishes').find(w => w.id === id); if (!wish) return;
+  const totals = gameTotals(state);
+  openDialog('Порадовать себя?', `<h3>${esc(wish.title)}</h3><p class="dialog-intro">${wish.cost} ${wish.currency === 'gold' ? 'золотых' : 'монет'} · сейчас в банке ${totals[wish.currency]}</p><p class="muted">После покупки желание появится в «Купленных радостях». Отметьте «Получено», когда порадуете себя в жизни.</p><div class="dialog-footer"><div>${button('game-shop', 'Вернуться', '', 'btn btn-light')}${button('confirm-buy-wish', 'Купить желание', 'check', 'btn btn-primary', `data-id="${id}"`)}</div></div>`);
+}
 function taskDialog(record = {}, fromIdea = '', parent = '') {
   const parentTask = task(parent || record.parentTaskId), defaults = { id: '', title: '', notes: '', date: selectedDate, hot: false, goalId: '', ...record };
-  openDialog(parentTask ? 'Подзадача' : defaults.id ? 'Редактировать задачу' : 'Новый шаг', `${parentTask ? `<p class="dialog-intro">Часть задачи: ${esc(parentTask.title)}</p>` : ''}<input type="hidden" name="id" value="${defaults.id}"><input type="hidden" name="ideaId" value="${fromIdea}"><input type="hidden" name="parentTaskId" value="${parentTask?.id || ''}">${textField('title', 'Что нужно сделать?', defaults.title, 'Сформулируйте понятное действие')}<div class="form-columns"><label class="field">Дата<input type="date" name="date" value="${parentTask?.date || defaults.date}" required ${parentTask ? 'readonly' : ''}></label><label class="field">Цель или проект<select name="goalId"><option value="">Без привязки</option>${visible('goals').map(g => `<option value="${g.id}" ${(parentTask?.goalId || defaults.goalId) === g.id ? 'selected' : ''}>${esc(g.title)} · ${labels[g.level]}</option>`).join('')}</select></label></div>${parentTask ? '<p class="muted">Награда за этот шаг — часть общего фонда основной задачи.</p>' : effortField(defaults.effort || 10)}${notesField(defaults.notes)}<label class="checkbox-label"><input type="checkbox" name="hot" ${defaults.hot ? 'checked' : ''}>${icon('flame')} Горячая задача — важна сегодня</label>`, 'task-form', 'Сохранить', defaults.id ? button('delete', 'Удалить', 'trash', 'text-button danger', `data-id="${defaults.id}" data-collection="tasks"`) : '');
+  openDialog(parentTask ? 'Подзадача' : defaults.id ? 'Редактировать задачу' : 'Новый шаг', `${parentTask ? `<p class="dialog-intro">Часть задачи: ${esc(parentTask.title)}</p>` : ''}<input type="hidden" name="id" value="${defaults.id}"><input type="hidden" name="ideaId" value="${fromIdea}"><input type="hidden" name="parentTaskId" value="${parentTask?.id || ''}">${textField('title', 'Что нужно сделать?', defaults.title, 'Сформулируйте понятное действие')}<div class="form-columns"><label class="field">Дата<input type="date" name="date" value="${parentTask?.date || defaults.date}" required ${parentTask ? 'readonly' : ''}></label><label class="field">Цель или проект<select name="goalId"><option value="">Без привязки</option>${visible('goals').map(g => `<option value="${g.id}" ${(parentTask?.goalId || defaults.goalId) === g.id ? 'selected' : ''}>${esc(g.title)} · ${labels[g.level]}</option>`).join('')}</select></label></div>${notesField(defaults.notes)}${rewardFields(defaults, 'tasks')}<label class="checkbox-label"><input type="checkbox" name="hot" ${defaults.hot ? 'checked' : ''}>${icon('flame')} Горячая задача — важна сегодня</label>`, 'task-form', 'Сохранить', defaults.id ? button('delete', 'Удалить', 'trash', 'text-button danger', `data-id="${defaults.id}" data-collection="tasks"`) : '');
 }
 function goalPeriodFields(record) {
   if (['month', 'week', 'project'].includes(record.level)) return calendarGoalFields(record);
@@ -239,7 +277,7 @@ function updateGoalPeriodFields(form) {
 function goalDialog(record = {}, level = 'strategy') {
   const defaults = { id: '', title: '', notes: '', period: '', parentId: '', progress: 0, level, ...record };
   const parents = visible('goals').filter(g => LEVELS.indexOf(g.level) < LEVELS.indexOf(defaults.level));
-  openDialog(defaults.id ? 'Редактировать ' + (defaults.level === 'project' ? 'проект' : 'цель') : defaults.level === 'project' ? 'Новый проект' : 'Новая цель', `<p class="dialog-intro">${labels[defaults.level]} · ${captions[defaults.level]}</p><input type="hidden" name="id" value="${defaults.id}"><input type="hidden" name="level" value="${defaults.level}">${textField('title', 'Какой результат вы хотите получить?', defaults.title, 'Что изменится, когда это получится?')}${goalPeriodFields(defaults)}<label class="field">Связь с более широкой целью<select name="parentId"><option value="">Самостоятельная цель</option>${parents.map(g => `<option value="${g.id}" ${g.id === defaults.parentId ? 'selected' : ''}>${esc(g.title)} · ${labels[g.level]}</option>`).join('')}</select></label>${notesField(defaults.notes)}<label class="field">Продвижение, %<input type="number" name="progress" min="0" max="100" step="1" value="${defaults.progress}" required></label>`, 'goal-form', 'Сохранить', defaults.id ? button('delete', 'Удалить', 'trash', 'text-button danger', `data-id="${defaults.id}" data-collection="goals"`) : '');
+  openDialog(defaults.id ? 'Редактировать ' + (defaults.level === 'project' ? 'проект' : 'цель') : defaults.level === 'project' ? 'Новый проект' : 'Новая цель', `<p class="dialog-intro">${labels[defaults.level]} · ${captions[defaults.level]}</p><input type="hidden" name="id" value="${defaults.id}"><input type="hidden" name="level" value="${defaults.level}">${textField('title', 'Какой результат вы хотите получить?', defaults.title, 'Что изменится, когда это получится?')}${goalPeriodFields(defaults)}<label class="field">Связь с более широкой целью<select name="parentId"><option value="">Самостоятельная цель</option>${parents.map(g => `<option value="${g.id}" ${g.id === defaults.parentId ? 'selected' : ''}>${esc(g.title)} · ${labels[g.level]}</option>`).join('')}</select></label>${notesField(defaults.notes)}${rewardFields(defaults, 'goals')}<label class="field">Продвижение, %<input type="number" name="progress" min="0" max="100" step="1" value="${defaults.progress}" required></label>`, 'goal-form', 'Сохранить', defaults.id ? button('delete', 'Удалить', 'trash', 'text-button danger', `data-id="${defaults.id}" data-collection="goals"`) : '');
 }
 function ideaDialog(record = {}) {
   openDialog(record.id ? 'Редактировать мысль' : 'Оставьте мысль здесь', `<p class="dialog-intro">Не нужно разбирать её прямо сейчас. Вернитесь к своему фокусу.</p><input type="hidden" name="id" value="${record.id || ''}">${textField('title', 'Что крутится в голове?', record.title, 'Запишите как есть…')}${notesField(record.notes)}`, 'idea-form', 'Сохранить мысль');
@@ -310,7 +348,7 @@ function example() {
   put('tasks', { id: uid(), title: 'Выбрать один результат на эту неделю', notes: '', date: selectedDate, done: false, hot: false, goalId: project.id, parentTaskId: first.id });
   put('tasks', { id: uid(), title: 'Выгрузить незакрытые дела из головы', notes: '', date: selectedDate, done: false, hot: true, goalId: project.id, parentTaskId: '' });
   put('tasks', { id: uid(), title: 'Прогуляться без телефона', notes: '', date: selectedDate, done: false, hot: false, goalId: '', parentTaskId: '' });
-  put('tasks', { id: uid(), title: 'Выделить 5 минут на утренний план', notes: '', date: selectedDate, done: true, hot: false, goalId: project.id, parentTaskId: '' });
+  put('tasks', { id: uid(), title: 'Выделить 5 минут на утренний план', notes: '', date: selectedDate, done: true, hot: false, goalId: project.id, parentTaskId: '' }, { game: false });
   put('ideas', { id: uid(), title: 'Подумать о небольшом личном проекте', notes: 'Вернуться, когда появится место и интерес.', status: 'later' });
   const exampleIds = Object.fromEntries(Object.entries(before).map(([key, ids]) => [key, state[key].filter(r => !ids.has(r.id)).map(r => r.id)]));
   localStorage.setItem('opora.example', JSON.stringify(exampleIds)); render(); toast('Добавлены примерные планы. Их можно удалить или заменить своими.');
@@ -329,6 +367,24 @@ function handleAction(event) {
   const target = event.target.closest('[data-action]'); if (!target) return;
   event.preventDefault(); const action = target.dataset.action, id = target.dataset.id;
   if (action === 'navigate') { page = target.dataset.page; render(); window.scrollTo(0, 0); }
+  else if (action === 'toggle-theme') {
+    const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = theme; localStorage.setItem('opora.theme', theme);
+    document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#101c1d' : '#314d40'; render();
+  }
+  else if (action === 'game-shop') shopDialog();
+  else if (action === 'new-wish') wishDialog();
+  else if (action === 'edit-wish') wishDialog(visible('wishes').find(w => w.id === id));
+  else if (action === 'buy-wish') buyWishDialog(id);
+  else if (action === 'confirm-buy-wish') {
+    try { put('purchases', purchaseWish(state, id, uid(), stamp())); render(); shopDialog(); toast('Желание куплено. Теперь пора порадовать себя!'); }
+    catch (error) { toast(error.message); }
+  }
+  else if (action === 'claim-purchase') { const p = visible('purchases').find(p => p.id === id); if (p) put('purchases', { ...p, fulfilled: true }); shopDialog(); toast('Радость получена. Пусть останется хорошее воспоминание.'); }
+  else if (action === 'refund-purchase') { const p = visible('purchases').find(p => p.id === id); if (p && !p.fulfilled) { remove('purchases', id); shopDialog(); toast('Покупка отменена, монеты возвращены.'); } }
+  else if (action === 'wish-examples') {
+    [['Кофе или любимый десерт', 'coins', 5, true], ['Вечер с любимым фильмом', 'coins', 10, true], ['Книга из списка желаний', 'gold', 10, false]].forEach(([title, currency, cost, repeatable]) => put('wishes', { id: uid(), title, currency, cost, repeatable, notes: '' })); shopDialog();
+  }
   else if (action === 'date') { selectedDate = target.dataset.date; render(); }
   else if (action === 'previous-day' || action === 'next-day') { selectedDate = shiftDate(selectedDate, action === 'previous-day' ? -1 : 1); render(); }
   else if (action === 'today') { selectedDate = dateKey(); render(); }
@@ -336,22 +392,20 @@ function handleAction(event) {
     put('days', { ...day(), closed: action === 'close-day' }); render();
     toast(action === 'close-day' ? 'День закрыт. Выполненные задачи в архиве.' : 'День открыт. Все задачи снова видны.');
   }
-  else if (action.startsWith('game-')) { handleGame(action, id); }
   else if (action === 'new-task') taskDialog();
   else if (action === 'edit-task') taskDialog(task(id));
   else if (action === 'subtask') taskDialog({}, '', id);
   else if (action === 'toggle-task' || action === 'hot-task') {
     const t = task(id); if (!t) return;
+    const before = gameTotals(state);
     if (action === 'toggle-task' && t.done) {
       const taskDay = visible('days').find(d => d.id === t.date);
       if (taskDay?.closed) put('days', { ...taskDay, closed: false });
     }
-    const before = gameTotals(state, dateKey().slice(0, 7)).earned;
-    if (action === 'toggle-task' && !t.done) { const entry = earningFor(state, t, dateKey()); if (entry) { put('ledger', entry); const family = visible('tasks').filter(c => c.id === entry.groupId || c.parentTaskId === entry.groupId); family.forEach(c => put('tasks', { ...c, gameGroupId: entry.groupId })); } }
-    put('tasks', { ...task(id), [action === 'toggle-task' ? 'done' : 'hot']: !t[action === 'toggle-task' ? 'done' : 'hot'] }); render();
+    put('tasks', { ...t, [action === 'toggle-task' ? 'done' : 'hot']: !t[action === 'toggle-task' ? 'done' : 'hot'] }); render();
     if (action === 'toggle-task' && !t.done) { visible('tasks').filter(c => c.parentTaskId === id && !c.done).forEach(c => put('tasks', { ...c, done: true })); render(); }
-    if (action === 'toggle-task' && !t.done) { const gained = gameTotals(state, dateKey().slice(0, 7)).earned - before; if (gained > 0) toast(`+${gained} монет · +${gained * 5} XP. Шаг сделан!`); }
     if (dialog.open && dialog.querySelector('.detail-task')) detailsDialog(t.goalId);
+    if (action === 'toggle-task') announceReward(before);
   }
   else if (action === 'focus-mode' || action === 'exit-focus') { focusMode = action === 'focus-mode'; render(); }
   else if (action === 'capture') ideaDialog();
@@ -413,7 +467,6 @@ function handleAction(event) {
 document.addEventListener('click', handleAction);
 document.addEventListener('submit', event => {
   event.preventDefault(); const form = event.target, formId = form.getAttribute('id'), values = Object.fromEntries(new FormData(form));
-  if (formId === 'reward-form' || formId === 'budget-form') { submitGame(formId, values); return; }
   if (formId === 'sync-form') { synchronize(form); return; }
   if (formId === 'quick-task') {
     const title = values.title.trim(); if (!title) return;
@@ -422,12 +475,13 @@ document.addEventListener('submit', event => {
   else if (formId === 'task-form') {
     const title = values.title.trim(); if (!title || !validDate(values.date)) return;
     const previous = task(values.id), parentTask = task(values.parentTaskId), date = parentTask?.date || values.date;
-    const newTask = put('tasks', { id: values.id || uid(), title, notes: values.notes.trim(), date, hot: values.hot === 'on', done: previous?.done || false, goalId: values.goalId, parentTaskId: parentTask?.id || '', gameGroupId: previous?.gameGroupId || parentTask?.gameGroupId || parentTask?.id || '', effort: parentTask?.effort || Number(values.effort) || previous?.effort || 10 });
+    const newTask = put('tasks', { id: values.id || uid(), title, notes: values.notes.trim(), date, hot: values.hot === 'on', done: previous?.done || false, goalId: values.goalId, parentTaskId: parentTask?.id || '', profitable: values.profitable === 'on', effort: Number(values.effort) });
     if (previous && previous.date !== date) visible('tasks').filter(t => t.parentTaskId === previous.id).forEach(t => put('tasks', { ...t, date }));
     if (values.ideaId) { const i = visible('ideas').find(i => i.id === values.ideaId); if (i) put('ideas', { ...i, status: 'archived' }); }
     closeDialog(); render(); toast(values.ideaId ? 'Мысль стала задачей. Исходная запись в архиве.' : 'Задача сохранена');
   }
   else if (formId === 'goal-form') {
+    const before = gameTotals(state);
     const title = values.title.trim(); if (!title) return;
     let period = (values.period || '').trim();
     if (values.calendarKind) {
@@ -444,7 +498,12 @@ document.addEventListener('submit', event => {
       catch (error) { toast(error.message); return; }
       periodView.kind = values.periodKind; periodView.year = Number(values.periodYear); periodView[values.periodKind] = Number(values.periodIndex);
     }
-    put('goals', { id: values.id || uid(), title, notes: values.notes.trim(), level: values.level, period, parentId: values.parentId, progress: Number(values.progress) }); closeDialog(); render(); toast('План сохранён');
+    put('goals', { id: values.id || uid(), title, notes: values.notes.trim(), level: values.level, period, parentId: values.parentId, progress: Number(values.progress), profitable: values.profitable === 'on', effort: Number(values.effort) }); closeDialog(); render(); toast('План сохранён'); announceReward(before);
+  }
+  else if (formId === 'wish-form') {
+    const wish = { id: values.id || uid(), title: values.title.trim(), notes: values.notes.trim(), cost: Number(values.cost), currency: values.currency, repeatable: values.repeatable === 'on' };
+    if (!wish.title || !Number.isSafeInteger(wish.cost) || wish.cost < 1 || wish.cost > 1000000) return;
+    put('wishes', wish); render(); shopDialog(); toast('Желание добавлено в магазин');
   }
   else if (formId === 'idea-form' || formId === 'quick-idea') {
     const title = values.title.trim(); if (!title) return;
@@ -454,11 +513,18 @@ document.addEventListener('submit', event => {
 });
 document.addEventListener('input', event => {
   const target = event.target;
+  if (['effort', 'profitable'].includes(target.name)) {
+    const form = target.closest('form'), preview = form?.querySelector('.reward-preview');
+    if (preview && !state.awards.some(a => a.id === `${preview.dataset.rewardType}.${form.querySelector('[name="id"]').value}`)) {
+      const r = rewardFor(preview.dataset.rewardType, { effort: Number(form.querySelector('[name="effort"]').value), profitable: form.querySelector('[name="profitable"]').checked });
+      preview.textContent = `За выполнение: ${r.xp} XP · ${r.gold ? `${r.gold} золотых` : `${r.coins} монет`}`;
+    }
+  }
   if (target.closest('#goal-form') && (target.name.startsWith('calendar') || target.name === 'periodText')) updateCalendarFields(target.closest('form'));
   if (target.closest('#goal-form') && ['periodKind', 'periodYear', 'periodIndex'].includes(target.name)) updateGoalPeriodFields(target.closest('form'));
   if (target.id === 'day-focus' || target.id === 'day-review') put('days', { ...day(), [target.id === 'day-focus' ? 'focus' : 'review']: target.value });
   if (target.dataset.goal) {
-    const g = goal(target.dataset.goal); put('goals', { ...g, progress: Number(target.value) }); target.style.setProperty('--progress', `${target.value}%`); target.previousElementSibling.previousElementSibling.querySelector('b').textContent = `${target.value}%`;
+    const before = gameTotals(state), g = goal(target.dataset.goal); put('goals', { ...g, progress: Number(target.value) }); target.style.setProperty('--progress', `${target.value}%`); target.previousElementSibling.previousElementSibling.querySelector('b').textContent = `${target.value}%`; announceReward(before);
   }
 });
 document.addEventListener('change', async event => {
@@ -495,72 +561,3 @@ dialog.addEventListener('click', event => { if (event.target === dialog) { const
 setInterval(updateTimer, 1000);
 render();
 if ('serviceWorker' in navigator && ['http:', 'https:'].includes(location.protocol)) navigator.serviceWorker.register('./sw.js').catch(() => {});
-
-// Qwest: one journal for earned currency, purchases and synchronisation.
-function euro(cents) { return (cents / 100).toLocaleString('ru-RU', { style: 'currency', currency: 'EUR' }); }
-function effortField(value) {
-  return `<label class="field">Усилие и награда<select name="effort">${EFFORTS.map(e => `<option value="${e.coins}" ${e.coins === value ? 'selected' : ''}>${e.title} · ${e.coins} монет · ${e.coins * 5} XP</option>`).join('')}</select></label>`;
-}
-function gameCard() {
-  const t = gameTotals(state, dateKey().slice(0, 7));
-  const target = visible('rewards').find(r => r.cost > t.balance) || visible('rewards')[0];
-  return `<section class="quest-strip"><div><span class="small-label">МОЯ ИГРА · УРОВЕНЬ ${t.level}</span><strong>🪙 ${t.balance} <small>монет</small> <span>⭐ ${t.xp} XP</span></strong><p>${target ? `${esc(target.title)} · ${Math.max(0, target.cost - t.balance)} монет до награды` : 'Каждый выполненный шаг приближает к вашим радостям.'}</p></div>${button('game-open', 'Мои награды', 'spark', 'btn btn-light')}</section>`;
-}
-function renderGame() {
-  const today = dateKey(), t = gameTotals(state, today.slice(0, 7));
-  const purchases = visible('ledger').filter(r => r.kind === 'buy').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  const earned = effectiveEarnings(state);
-  const history = visible('ledger').slice().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 30);
-  return `<section class="page-heading"><div><div class="eyebrow">QWEST · ВАША ИГРА</div><h1>Дела приносят радость<span class="heading-dot">.</span></h1><p>Выполненный шаг → опыт и монеты → выбранная награда.</p></div>${button('navigate', 'К плану', 'back', 'btn btn-light', 'data-page="day"')}</section>
-    ${t.balance < 0 || t.remainingCents < 0 ? '<div class="warning">После объединения устройств обнаружены покупки сверх доступного остатка. Отмените лишнюю покупку в истории. Новые покупки ограничены остатком монет и бюджета.</div>' : ''}
-    <section class="quest-character"><div class="quest-avatar" aria-hidden="true">🌿</div><div><span class="small-label">ПЕРСОНАЖ · МИША</span><h2>Уровень ${t.level} · ${t.level < 3 ? 'Начало пути' : t.level < 6 ? 'Уверенный шаг' : 'Мастер своего пути'}</h2><p>${t.xp} XP · до следующего уровня ${t.next - t.xp} XP</p><progress max="100" value="${t.progress}" aria-label="Прогресс уровня"></progress></div><div class="quest-wallet"><strong>🪙 ${t.balance}</strong><span>монет в кошельке</span><small>Заработано ${t.earned} · потрачено ${t.spent}</small></div></section>
-    <section class="card quest-budget"><div><h2>Бюджет радостей · ${new Date(today + 'T12:00:00').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}</h2><p>Выделено ${euro(t.budgetCents)} · использовано ${euro(t.euroSpent)} · осталось ${euro(t.remainingCents)}</p><small>Монеты открывают награды. Покупки за евро остаются в пределах заранее выделенной суммы.</small></div>${button('game-budget', 'Задать бюджет', 'edit', 'btn btn-light')}</section>
-    <div class="section-heading"><h2>Магазин радостей</h2>${button('game-new', 'Добавить желание', 'plus', 'btn btn-primary')}</div>
-    <div class="quest-rewards">${visible('rewards').map(r => {
-      const reason = canBuy(state, r, today), pct = Math.min(100, Math.max(0, t.balance / r.cost * 100));
-      return `<article class="card quest-reward"><span class="small-label">МОЯ НАГРАДА</span><h3>${esc(r.title)}</h3><p><strong>🪙 ${r.cost}</strong> · ${r.euroCents ? euro(r.euroCents) : 'Без денежных расходов'}</p><progress max="100" value="${pct}" aria-label="Накоплено на ${esc(r.title)}"></progress><p class="muted">${reason || 'Можно порадовать себя.'}</p><div class="button-row">${button('game-buy', 'Получить награду', 'spark', 'btn btn-primary', `data-id="${r.id}" ${reason ? 'disabled' : ''}`)}${button('game-edit', 'Изменить', 'edit', 'text-button', `data-id="${r.id}"`)}</div></article>`;
-    }).join('') || `<section class="card"><h3>На что хочется накопить?</h3><p>Например, снасти, инструмент для мастерской или небольшая приятная покупка. Назначьте собственную цену в монетах.</p>${button('game-new', 'Создать первую награду', 'plus', 'btn btn-primary')}</section>`}</div>
-    <details class="card quest-rules"><summary>Правила моей игры</summary><p>Небольшой шаг: 3 монеты / 15 XP. Обычное дело: 10 / 50 XP. Большое усилие: 25 / 125 XP. В быстрой записи используется обычное дело; усилие можно выбрать в редакторе задачи.</p><p>У основной задачи и её подзадач общий фонд. За подзадачу — часть фонда, за завершение основной задачи — остаток. Размер фонда фиксируется при первом начислении. Срочность не увеличивает награду.</p><p>Награда за конкретную задачу начисляется один раз. Снятие галочки, перенос, удаление и повторное завершение не дают новые монеты и не забирают уже заработанные. Ранее выполненные задачи автоматически не начисляются. Старые задачи считаются обычными делами.</p><p>Опыт не тратится. Монеты не сгорают. За пропущенный день нет штрафа. Обычный отдых всегда доступен.</p><p>Бюджет действует на текущий календарный месяц, неизрасходованная сумма не переносится автоматически. Монеты сохраняются. Цена награды в евро фиксируется в истории при покупке. Приложение ведёт учёт, но не переводит реальные деньги.</p><p>Перед покупкой синхронизируйте устройства. При покупках офлайн на двух устройствах возможен перерасход после объединения; все покупки сохраняются и лишнюю можно отменить.</p></details>
-    <section class="card quest-history"><h2>История · последние 30 записей</h2>${history.length ? history.map(r => `<div class="quest-history-row"><div><strong>${esc(r.title)}</strong><small>${dateLabel(r.date)} · ${r.kind === 'buy' ? 'Награда получена' : 'Шаг выполнен'}</small></div><span>${r.kind === 'buy' ? '−' + r.coins : '+' + (earned.get(r.id) || 0)} 🪙${r.kind === 'buy' && r.euroCents ? `<small>${euro(r.euroCents)}</small>` : ''}</span>${r.kind === 'buy' ? button('game-refund', 'Отменить', '', 'text-button', `data-id="${r.id}"`) : ''}</div>`).join('') : '<p class="muted">Здесь появятся ваши первые заработанные монеты.</p>'}${purchases.length > 0 ? `<details><summary>Все покупки (${purchases.length})</summary>${purchases.map(r => `<div class="quest-history-row"><span>${esc(r.title)} · ${dateLabel(r.date)} · ${r.coins} монет</span>${button('game-refund', 'Отменить', '', 'text-button', `data-id="${r.id}"`)}</div>`).join('')}</details>` : ''}</section>`;
-}
-function rewardDialog(record = {}) {
-  openDialog(record.id ? 'Изменить награду' : 'Моя следующая радость', `<input type="hidden" name="id" value="${record.id || ''}">${textField('title', 'Что хочется получить?', record.title || '', 'Например, снасти для рыбалки')}<div class="form-columns"><label class="field">Цена в монетах<input type="number" name="cost" min="1" max="1000000" step="1" value="${record.cost || 100}" required></label><label class="field">Стоимость в евро<input type="number" name="euros" min="0" max="1000000" step="0.01" value="${(record.euroCents || 0) / 100}" required></label></div><p class="muted">0 евро — награда без денежных расходов. Изменение цены не меняет предыдущие покупки.</p>`, 'reward-form', 'Сохранить', record.id ? button('game-delete', 'Удалить желание', 'trash', 'text-button danger', `data-id="${record.id}"`) : '');
-}
-function handleGame(action, id) {
-  if (action === 'game-open') { page = 'game'; focusMode = false; render(); window.scrollTo(0, 0); }
-  else if (action === 'game-new') rewardDialog();
-  else if (action === 'game-edit') { const r = visible('rewards').find(r => r.id === id); if (r) rewardDialog(r); }
-  else if (action === 'game-delete') { remove('rewards', id); closeDialog(); }
-  else if (action === 'game-budget') { const t = gameTotals(state, dateKey().slice(0, 7)); openDialog('Бюджет радостей на месяц', `<label class="field">Посильная сумма в евро<input type="number" name="euros" min="0" max="1000000" step="0.01" value="${t.budgetCents / 100}" required></label><p>Эта сумма ограничивает покупки наград за деньги. Вы можете менять её каждый месяц.</p>`, 'budget-form'); }
-  else if (action === 'game-buy') {
-    const r = visible('rewards').find(r => r.id === id); if (!r) return;
-    const reason = canBuy(state, r, dateKey()); if (reason) return toast(reason);
-    openDialog('Получить награду?', `<p><strong>${esc(r.title)}</strong></p><p>Спишется ${r.cost} монет${r.euroCents ? ' и будет учтено ' + euro(r.euroCents) + ' из бюджета месяца' : ''}. Опыт и уровень сохранятся.</p><div class="dialog-footer">${button('close-dialog', 'Пока нет', '', 'btn btn-light')}${button('game-confirm', 'Получить', 'spark', 'btn btn-primary', `data-id="${id}"`)}</div>`);
-  }
-  else if (action === 'game-confirm') {
-    const r = visible('rewards').find(r => r.id === id); if (!r) return;
-    const reason = canBuy(state, r, dateKey()); if (reason) { closeDialog(); render(); return toast(reason); }
-    put('ledger', { id: uid(), kind: 'buy', title: r.title, date: dateKey(), coins: r.cost, euroCents: r.euroCents }); closeDialog(); render(); toast('Награда ваша. Наслаждайтесь!');
-  }
-  else if (action === 'game-refund') {
-    const r = visible('ledger').find(r => r.id === id && r.kind === 'buy'); if (!r) return;
-    openDialog('Отменить покупку?', `<p>${esc(r.title)}: вернуть ${r.coins} монет${r.euroCents ? ' и ' + euro(r.euroCents) + ' в бюджет месяца покупки' : ''}?</p><div class="dialog-footer">${button('close-dialog', 'Назад', '', 'btn btn-light')}${button('game-refund-confirm', 'Отменить покупку', '', 'btn btn-primary', `data-id="${id}"`)}</div>`);
-  }
-  else if (action === 'game-refund-confirm') { const r = visible('ledger').find(r => r.id === id && r.kind === 'buy'); if (r) remove('ledger', id); closeDialog(); }
-}
-function submitGame(formId, values) {
-  const cents = Math.round(Number(values.euros) * 100);
-  if (!Number.isSafeInteger(cents) || cents < 0 || cents > 100000000) return toast('Укажите корректную сумму в евро.');
-  if (formId === 'budget-form') put('gameSettings', { id: 'budget:' + dateKey().slice(0, 7), budgetCents: cents });
-  else {
-    const cost = Number(values.cost), title = values.title.trim();
-    if (!title || !Number.isSafeInteger(cost) || cost < 1 || cost > 1000000) return toast('Укажите название и целую цену в монетах.');
-    put('rewards', { id: values.id || uid(), title, cost, euroCents: cents });
-  }
-  closeDialog(); render(); toast('Сохранено');
-}
-
-function battleCard() {
-  const b = dayBattle(state, selectedDate);
-  return `<section class="quest-battle ${b.defeated ? 'is-defeated' : ''}"><div class="quest-enemy" aria-hidden="true">${b.defeated ? '🏆' : '🐉'}</div><div><span class="small-label">БОСС ДНЯ · ${dateLabel(selectedDate)}</span><h2>${b.defeated ? 'Победа! ' : ''}${esc(b.name)}</h2><p>${!b.max ? 'Добавьте первый шаг в план — начнётся ваше приключение.' : b.defeated ? 'Сегодняшние квесты завершены. Награды за дела уже в кошельке.' : `Осталось ${b.remaining} / ${b.max} HP. Выполненные задачи и подзадачи ослабляют босса.`}</p><progress max="100" value="${b.progress}" aria-label="Босс дня: ${b.progress}% пройдено"></progress><small>Бой отражает выбранный план дня. За незавершённые дела нет штрафа.</small></div></section>`;
-}
