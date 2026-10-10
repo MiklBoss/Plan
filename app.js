@@ -33,6 +33,7 @@ try { const saved = localStorage.getItem(KEY); if (saved) state = validateState(
 catch { storageFailed = true; }
 let config = {};
 try { config = JSON.parse(localStorage.getItem(CONFIG) || '{}'); } catch { /* Keep planner usable. */ }
+let dayStartDraft = null, focusTaskId = '';
 let page = 'day', planLevel = 'month', selectedDate = dateKey(), ideaFilter = 'inbox', focusMode = false, syncing = false, lastStamp = 0, dialogReturnFocus;
 const periodView = { kind: 'quarter', year: new Date().getFullYear(), half: Math.floor(new Date().getMonth() / 6) + 1, quarter: Math.floor(new Date().getMonth() / 3) + 1 };
 const planView = { month: dateKey().slice(0, 7), week: dateKey(), scope: 'period' };
@@ -112,7 +113,7 @@ function renderDay() {
       const num = visible('tasks').filter(t => t.date === key && !t.done).length;
       return `<button data-action="date" data-date="${key}" class="week-day ${key === selectedDate ? 'selected' : ''} ${key === today ? 'is-today' : ''}" aria-label="${dateLabel(key)}"><span>${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][i]}</span><b>${Number(key.slice(-2))}</b><i class="${num ? 'has-tasks' : ''}"></i></button>`;
     }).join('')}</div><div class="date-controls">${button('previous-day', '', 'back', 'icon-button', 'aria-label="Предыдущий день"')}${button('today', 'Сегодня', '', 'btn btn-small btn-light')}${button('next-day', '', 'chevron', 'icon-button', 'aria-label="Следующий день"')}<label class="date-picker" title="Выбрать дату">${icon('day')}<input type="date" id="date-picker" value="${selectedDate}" aria-label="Выбрать дату"></label></div></div>
-    <div class="day-grid"><div class="day-main">${heroCard()}<section class="focus-card"><div class="focus-top"><span class="small-label">${icon('focus')} ФОКУС ДНЯ</span><span class="focus-tag">Одно самое важное</span></div><label class="sr-only" for="day-focus">Фокус дня</label><textarea id="day-focus" rows="2" maxlength="500" placeholder="Что сделает этот день не напрасным?">${esc(record.focus)}</textarea><div class="focus-bottom"><span>${icon('leaf')} Выберите результат, а не список дел</span>${button('focus-mode', 'Сосредоточиться', 'arrow', 'focus-enter')}</div><svg class="focus-decoration" viewBox="0 0 180 180" aria-hidden="true"><g fill="none" stroke="currentColor"><circle cx="130" cy="130" r="95"/><circle cx="130" cy="130" r="72"/><circle cx="130" cy="130" r="49"/><path d="M35 130h190M130 35v190"/></g></svg></section>
+    <div class="day-grid"><div class="day-main">${record.closed ? '' : `<div class="day-start-entry">${button('start-day', selectedDate === today ? 'Начать мой день' : 'Подготовить этот день', 'sun', 'btn btn-light')}<span>Выбрать главное и первый шаг</span></div>`}${heroCard()}<section class="focus-card"><div class="focus-top"><span class="small-label">${icon('focus')} ФОКУС ДНЯ</span><span class="focus-tag">Одно самое важное</span></div><label class="sr-only" for="day-focus">Фокус дня</label><textarea id="day-focus" rows="2" maxlength="500" placeholder="Что сделает этот день не напрасным?">${esc(record.focus)}</textarea><div class="focus-bottom"><span>${icon('leaf')} Выберите результат, а не список дел</span>${button('focus-mode', 'Сосредоточиться', 'arrow', 'focus-enter')}</div><svg class="focus-decoration" viewBox="0 0 180 180" aria-hidden="true"><g fill="none" stroke="currentColor"><circle cx="130" cy="130" r="95"/><circle cx="130" cy="130" r="72"/><circle cx="130" cy="130" r="49"/><path d="M35 130h190M130 35v190"/></g></svg></section>
     <section class="task-section"><div class="section-heading"><h2>${icon('flame')} Горячие задачи <span class="number-badge">${hot.filter(t => !t.done).length}</span></h2><span class="section-caption">До 3 главных — уже достаточно</span></div>${hot.length ? `<div class="task-list hot-list">${hot.map(t => taskRow(t, { hideCompleted: record.closed })).join('')}</div>` : '<div class="empty-inline">Выберите задачи, которые требуют внимания сегодня.</div>'}</section>
     <section class="task-section"><div class="section-heading"><h2>Остальные задачи <span class="number-badge">${ordinary.filter(t => !t.done).length}</span></h2>${button('new-task', 'Добавить', 'plus', 'text-button')}</div>${ordinary.length ? `<div class="task-list">${ordinary.map(t => taskRow(t, { hideCompleted: record.closed })).join('')}</div>` : '<div class="empty-inline">Здесь может быть пусто. Оставьте место для жизни.</div>'}<form id="quick-task" class="quick-add">${icon('plus')}<input name="title" maxlength="500" placeholder="Небольшой следующий шаг…" aria-label="Новая задача" required autocomplete="off"><button type="submit" class="quick-submit" aria-label="Добавить задачу">${icon('arrow')}</button></form></section>
     ${record.closed && done.length ? `<details class="completed-section"><summary>${icon('check')} Выполненные задачи · архив <span>${completed}</span></summary><div class="task-list">${done.map(taskRow).join('')}</div></details>` : ''}
@@ -140,7 +141,7 @@ function timerCard() {
   return `<section class="card timer-card"><div class="section-heading"><h3>${icon('focus')} Время для фокуса</h3><span class="timer-dot"></span></div><p>Одно дело. Без переключений.</p><div class="timer-time" id="timer-time">25:00</div><div class="timer-controls">${button('timer-toggle', timer.end ? 'Пауза' : 'Начать 25 минут', timer.end ? 'pause' : 'play', 'btn btn-primary', 'id="timer-toggle"')}${button('timer-reset', '', 'reset', 'icon-button', 'aria-label="Сбросить таймер"')}</div><small id="timer-sessions">${timer.sessions ? `Сегодня в этой вкладке: ${timer.sessions} сессий` : 'Можно начать с одного спокойного отрезка'}</small></section>`;
 }
 function renderFocus() {
-  const tasks = visible('tasks').filter(t => t.date === selectedDate && (!day().closed || !t.done) && isHot(t) && !t.parentTaskId);
+  const tasks = visible('tasks').filter(t => t.date === selectedDate && (!day().closed || !t.done) && (focusTaskId ? t.id === focusTaskId : isHot(t) && !t.parentTaskId));
   app.innerHTML = `<main class="focus-screen"><div class="focus-screen-top"><span class="brand mini-brand">опора.</span>${button('exit-focus', 'Вернуться к плану', 'close', 'btn btn-light')}</div><div class="focus-screen-content"><div class="eyebrow">СЕЙЧАС ЕСТЬ ТОЛЬКО ЭТОТ ШАГ</div><h1>${esc(day().focus || 'Выберите одно дело и побудьте с ним.')}</h1><p class="muted">${dateLabel(selectedDate)} · остальное может подождать</p>${timerCard()}${tasks.length ? `<div class="focus-tasks">${tasks.map(t => taskRow(t, { hideCompleted: day().closed })).join('')}</div>` : ''}${button('capture', 'Записать отвлекающую мысль', 'plus', 'text-button')}<span class="escape-hint">Esc — вернуться к плану</span></div></main>`;
   updateTimer();
 }
@@ -214,6 +215,15 @@ function announceReward(before) {
   const after = gameTotals(state), xp = after.xp - before.xp;
   if (xp > 0) toast(`${after.level > before.level ? `Новый уровень ${after.level}! ` : 'Шаг сделан! ' }+${xp} XP${after.coins > before.coins ? ` · +${after.coins - before.coins} монет` : ''}${after.gold > before.gold ? ` · +${after.gold - before.gold} золотых` : ''}`);
   else if (xp < 0) toast('Отметка снята. XP и монеты пересчитаны.');
+}
+function dayStartFocusDialog() {
+  if (!dayStartDraft) return;
+  const plans = visible('goals').filter(g => periodOverlaps(g.period, dayStartDraft.date, dayStartDraft.date));
+  openDialog('Главное на этот день', `<p class="day-start-progress">1 из 2 · ${esc(dateLabel(dayStartDraft.date))}</p><p class="dialog-intro">Вспомните встречи, семейные дела и время на отдых. Что реально поместится в этот день?</p>${plans.length ? `<details class="game-rules"><summary>Планы на эту дату · ${plans.length}</summary>${plans.map(g => `<p>${esc(g.title)}</p>`).join('')}</details>` : ''}<label class="field">Один результат, который важен вам<textarea name="focus" rows="3" maxlength="500" placeholder="Например: отправить предложение клиенту">${esc(dayStartDraft.focus)}</textarea></label><p class="muted">Можно оставить пустым. Даже одного небольшого шага достаточно.</p>`, 'day-start-focus-form', 'Дальше');
+}
+function dayStartStepDialog() {
+  const tasks = visible('tasks').filter(t => t.date === dayStartDraft.date && !t.done);
+  openDialog('С какого шага начнём?', `<p class="day-start-progress">2 из 2 · ${esc(dateLabel(dayStartDraft.date))}</p>${dayStartDraft.focus ? `<p class="dialog-intro">${esc(dayStartDraft.focus)}</p>` : ''}<label class="field">Выберите задачу из плана<select name="taskId"><option value="">Пока без выбора</option>${tasks.map(t => `<option value="${t.id}" ${dayStartDraft.taskId === t.id ? 'selected' : ''}>${t.parentTaskId ? '↳ ' : ''}${esc(t.title)}</option>`).join('')}</select></label><label class="field">Или запишите новый маленький шаг<input name="title" maxlength="500" value="${esc(dayStartDraft.title)}" placeholder="Что можно сделать первым?" autocomplete="off"></label><p class="muted">Новый шаг заменит выбор выше и станет горячей задачей. Остальные дела останутся в плане. Таймер можно запустить, когда будете готовы.</p><div class="button-row">${button('day-start-back', 'Назад', 'back', 'text-button')}<button type="submit" name="intent" value="plan" class="btn btn-light">Сохранить план</button></div>`, 'day-start-step-form', 'Перейти к делу');
 }
 function shopDialog() {
   const totals = gameTotals(state), wishes = visible('wishes'), purchases = visible('purchases').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -411,7 +421,9 @@ function handleAction(event) {
     if (dialog.open && dialog.querySelector('.detail-task')) detailsDialog(t.goalId);
     if (action === 'toggle-task') announceReward(before);
   }
-  else if (action === 'focus-mode' || action === 'exit-focus') { focusMode = action === 'focus-mode'; render(); }
+  else if (action === 'start-day') { dayStartDraft = { date: selectedDate, focus: day().focus, taskId: '', title: '' }; dayStartFocusDialog(); }
+  else if (action === 'day-start-back') { const form = dialog.querySelector('form'); dayStartDraft.taskId = form.elements.taskId.value; dayStartDraft.title = form.elements.title.value; dayStartFocusDialog(); }
+  else if (action === 'focus-mode' || action === 'exit-focus') { focusTaskId = ''; focusMode = action === 'focus-mode'; render(); }
   else if (action === 'capture') ideaDialog();
   else if (action === 'close-dialog') closeDialog();
   else if (action === 'settings') settingsDialog();
@@ -472,7 +484,24 @@ document.addEventListener('click', handleAction);
 document.addEventListener('submit', event => {
   event.preventDefault(); const form = event.target, formId = form.getAttribute('id'), values = Object.fromEntries(new FormData(form));
   if (formId === 'sync-form') { synchronize(form); return; }
-  if (formId === 'quick-task') {
+  if (formId === 'day-start-focus-form') {
+    if (!dayStartDraft) return;
+    dayStartDraft.focus = values.focus.trim(); dayStartStepDialog();
+  }
+  else if (formId === 'day-start-step-form') {
+    if (!dayStartDraft || storageFailed) return;
+    const draft = dayStartDraft, title = values.title.trim();
+    const existing = task(values.taskId);
+    let first = existing && !existing.done && existing.date === draft.date ? existing : null;
+    if (title) first = put('tasks', { id: uid(), title, notes: '', date: draft.date, hot: true, done: false, goalId: '', parentTaskId: '' });
+    else if (first && !first.hot) first = put('tasks', { ...first, hot: true });
+    const record = visible('days').find(d => d.id === draft.date) || { id: draft.date, review: '', closed: false };
+    put('days', { ...record, focus: draft.focus });
+    selectedDate = draft.date; page = 'day'; focusTaskId = first?.id || '';
+    focusMode = event.submitter?.value !== 'plan'; dayStartDraft = null;
+    closeDialog(); render(); toast(focusMode ? 'Можно начать спокойно. Таймер — по желанию.' : 'Главное сохранено в плане дня.');
+  }
+  else if (formId === 'quick-task') {
     const title = values.title.trim(); if (!title) return;
     put('tasks', { id: uid(), title, notes: '', date: selectedDate, done: false, hot: false, goalId: '', parentTaskId: '' }); render(); document.querySelector('#quick-task input')?.focus();
   }
@@ -556,10 +585,10 @@ document.addEventListener('change', async event => {
 document.addEventListener('keydown', event => {
   if (event.ctrlKey || event.metaKey || event.altKey || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName) || event.target.isContentEditable) return;
   if (dialog.open) return;
-  if (event.key === 'Escape' && focusMode) { focusMode = false; render(); }
+  if (event.key === 'Escape' && focusMode) { focusTaskId = ''; focusMode = false; render(); }
   else if (['n', 'т'].includes(event.key.toLowerCase())) taskDialog();
   else if (['i', 'ш'].includes(event.key.toLowerCase())) ideaDialog();
-  else if (['f', 'а'].includes(event.key.toLowerCase())) { focusMode = !focusMode; render(); }
+  else if (['f', 'а'].includes(event.key.toLowerCase())) { focusTaskId = ''; focusMode = !focusMode; render(); }
 });
 window.addEventListener('storage', event => {
   if (event.key !== KEY || !event.newValue) return;
