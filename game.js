@@ -9,10 +9,18 @@ export function rewardFor(type, record) {
 export function updateAward(state, type, record, previous) {
   if (!['tasks', 'goals'].includes(type)) return;
   const id = `${type}.${record.id}`, index = state.awards.findIndex(a => a.id === id), completed = isComplete(type, record);
-  if (index === -1 && (!completed || isComplete(type, previous))) return;
-  const existing = state.awards[index];
+  const existing = state.awards[index]?.deleted ? null : state.awards[index];
+  if (!existing && (!completed || isComplete(type, previous))) return;
   const award = { id, title: record.title, notes: '', sourceType: type, sourceId: record.id, earned: completed, ...(existing ? { xp: existing.xp, coins: existing.coins, gold: existing.gold } : rewardFor(type, record)), updatedAt: record.updatedAt, deleted: false };
   if (index === -1) state.awards.push(award); else state.awards[index] = award;
+}
+export function resetGame(state, mode, updatedAt) {
+  if (!['coins', 'all'].includes(mode)) throw new Error('Выберите вариант сброса.');
+  const erase = record => record.deleted ? record : { id: record.id, deleted: true, updatedAt };
+  return { ...state,
+    awards: state.awards.map(a => mode === 'all' ? erase(a) : a.deleted ? a : { ...a, coins: 0, gold: 0, updatedAt }),
+    purchases: state.purchases.map(erase)
+  };
 }
 export function earnedAwards(state) {
   const sources = { tasks: new Map(state.tasks.map(t => [t.id, t])), goals: new Map(state.goals.map(g => [g.id, g])) };
